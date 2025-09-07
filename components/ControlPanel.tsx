@@ -9,6 +9,7 @@ import { ASPECT_RATIOS, FUNCTION_BUTTONS, ART_STYLES_LIST, EDITING_EXAMPLES, CHA
 import { enhanceWebcamImage } from '../services/geminiService';
 import { ColorPicker } from './ColorPicker';
 import { dataURLtoFile } from '../utils';
+import { AutosizeTextarea } from './AutosizeTextarea';
 
 
 type ControlPanelProps = {
@@ -52,6 +53,7 @@ type ControlPanelProps = {
     setIsControlPanelOpen: (isOpen: boolean) => void;
     isMobile: boolean;
     modifierKey: 'Ctrl' | '⌘';
+    isSuggestingEdit: boolean;
     // VEO Props
     veoPrompt: string;
     setVeoPrompt: React.Dispatch<React.SetStateAction<string>>;
@@ -87,8 +89,8 @@ const NavButton: React.FC<{
     </button>
 );
 
-const Section: React.FC<{ title?: string; children: React.ReactNode, noMb?: boolean }> = ({ title, children, noMb }) => (
-    <div className={noMb ? '' : 'mb-4'}>
+const Section: React.FC<{ title?: string; children: React.ReactNode, noMb?: boolean, className?: string }> = ({ title, children, noMb, className }) => (
+    <div className={`${noMb ? '' : 'mb-4'} ${className}`}>
         {title && <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider mb-2">{title}</h3>}
         {children}
     </div>
@@ -318,7 +320,7 @@ const VersionInfo: React.FC<{ modifierKey: 'Ctrl' | '⌘' }> = ({ modifierKey })
 
 
 export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
-    const { appMode, setAppMode, isControlPanelOpen, setIsControlPanelOpen, isMobile, modifierKey } = props;
+    const { appMode, setAppMode, isControlPanelOpen, setIsControlPanelOpen, isMobile, modifierKey, isSuggestingEdit } = props;
 
     const handleFileUpload = (setter: (image: UploadedImage | null) => void) => (image: UploadedImage) => {
         setter(image);
@@ -329,17 +331,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
     };
 
     const handleFunctionButtonClick = (promptText: string) => {
-        props.setPrompt(prev => prev.trim() ? `${prev.trim()}, ${promptText}` : promptText);
+        props.setPrompt(prev => {
+            const trimmedPrev = prev.trim();
+            // Avoid adding comma if prompt is empty
+            return trimmedPrev ? `${trimmedPrev}, ${promptText}` : promptText;
+        });
     };
 
     const renderGeneratePanel = () => (
         <>
             <Section title="1. 提示詞 (Prompt)">
-                <textarea
+                <AutosizeTextarea
                     value={props.prompt}
                     onChange={(e) => props.setPrompt(e.target.value)}
                     placeholder="輸入您的創意，例如：一隻可愛的貓咪太空人..."
-                    className="w-full h-28 p-2 bg-gray-800/50 rounded-lg text-sm placeholder-slate-500 focus:ring-2 focus:ring-fuchsia-500 focus:outline-none resize-y"
+                    className="w-full p-2 bg-gray-800/50 rounded-lg text-sm placeholder-slate-500 focus:ring-2 focus:ring-fuchsia-500 focus:outline-none resize-none min-h-[7rem]"
                 />
                 <div className="flex gap-2 mt-2">
                     <button onClick={props.onOptimizePrompt} disabled={props.isOptimizing} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs bg-purple-900/50 rounded-md hover:bg-fuchsia-700 disabled:opacity-50" title={!isMobile ? `自動優化 (${modifierKey}+O)` : '自動優化'}>
@@ -369,7 +375,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                         <div key={cat.category}>
                                 <p className="text-xs text-cyan-300 mt-2 mb-1 font-semibold">{cat.category}</p>
                                 {cat.examples.map(ex => (
-                                    <button key={ex.title} onClick={() => handleFunctionButtonClick(ex.prompt)} title={ex.prompt} className="w-full text-left px-2 py-0.5 bg-slate-700/50 text-xs rounded hover:bg-fuchsia-600 mb-1">{ex.title}</button>
+                                    <button key={ex.title} onClick={() => props.setPrompt(ex.prompt)} title={ex.prompt} className="w-full text-left px-2 py-0.5 bg-slate-700/50 text-xs rounded hover:bg-fuchsia-600 mb-1">{ex.title}</button>
                                 ))}
                         </div>
                         ))}
@@ -392,7 +398,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                 </div>
             </Section>
 
-            <Section title="參考圖 (選填，最多8張)">
+            <Section title="參考圖 (選填，最多8張)" className="relative">
+                 {isSuggestingEdit && (
+                    <div className="absolute inset-0 bg-black/70 z-10 flex flex-col items-center justify-center rounded-lg">
+                         <div className="w-8 h-8 border-2 border-dashed rounded-full animate-spin border-cyan-400"></div>
+                         <p className="mt-2 text-sm text-cyan-300">AI改圖顧問分析中...</p>
+                    </div>
+                 )}
                  <div className="grid grid-cols-4 gap-2 mb-2">
                     {props.referenceImages.map((img, index) => (
                         <div key={index} className="relative group aspect-square">
@@ -432,8 +444,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                 </div>
             </Section>
             
-            <button onClick={props.onGenerate} disabled={props.isLoading} className="w-full py-3 mt-auto bg-fuchsia-600 rounded-lg font-semibold hover:bg-fuchsia-700 disabled:bg-slate-700 disabled:cursor-not-allowed flex items-center justify-center gap-2" title={!isMobile ? `生成圖片 (${modifierKey}+Enter)` : '生成圖片'}>
-                 {props.isLoading ? '生成中...' : '生成圖片'}
+            <button onClick={props.onGenerate} disabled={props.isLoading || isSuggestingEdit} className="w-full py-3 mt-auto bg-fuchsia-600 rounded-lg font-semibold hover:bg-fuchsia-700 disabled:bg-slate-700 disabled:cursor-not-allowed flex items-center justify-center gap-2" title={!isMobile ? `生成圖片 (${modifierKey}+Enter)` : '生成圖片'}>
+                 {props.isLoading ? '生成中...' : (isSuggestingEdit ? 'AI分析中...' : '生成圖片')}
             </button>
         </>
     );
@@ -441,11 +453,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
     const renderCharacterCreatorPanel = () => (
         <>
             <Section title="1. 組合角色提示詞">
-                <textarea
+                <AutosizeTextarea
                     value={props.prompt}
                     onChange={(e) => props.setPrompt(e.target.value)}
                     placeholder="點擊下方按鈕來建立你的角色..."
-                    className="w-full h-24 p-2 bg-gray-800/50 rounded-lg text-sm placeholder-slate-500 focus:ring-2 focus:ring-fuchsia-500 focus:outline-none resize-y"
+                    className="w-full p-2 bg-gray-800/50 rounded-lg text-sm placeholder-slate-500 focus:ring-2 focus:ring-fuchsia-500 focus:outline-none resize-none min-h-[6rem]"
                 />
                  <div className="flex gap-2 mt-2">
                     <button onClick={props.onOptimizePrompt} disabled={props.isOptimizing} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs bg-purple-900/50 rounded-md hover:bg-fuchsia-700 disabled:opacity-50" title={!isMobile ? `自動優化 (${modifierKey}+O)` : '自動優化'}>
@@ -616,54 +628,91 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
         );
     };
 
+    const VeoFrameUploader: React.FC<{
+        label: string;
+        image: UploadedImage | null;
+        setImage: (image: UploadedImage | null) => void;
+        disabled?: boolean;
+    }> = ({ label, image, setImage, disabled }) => {
+        const [isMenuOpen, setIsMenuOpen] = useState(false);
+        const [isWebcamOpen, setIsWebcamOpen] = useState(false);
+        const fileInputRef = useRef<HTMLInputElement>(null);
+        const menuRef = useRef<HTMLDivElement>(null);
+
+        const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+            const file = event.target.files?.[0];
+            if (file?.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const src = e.target?.result as string;
+                    setImage({ src, file });
+                };
+                reader.readAsDataURL(file);
+            }
+            if (event.target) event.target.value = '';
+        };
+
+        const handlePasteFromClipboard = () => alert("貼上功能已啟用！請直接在頁面上按 Ctrl+V (或 Cmd+V) 來貼上圖片。");
+
+        const handleImageSelect = (img: UploadedImage) => {
+            setImage(img);
+            setIsWebcamOpen(false);
+        };
+
+        useEffect(() => {
+            const handleClickOutside = (event: MouseEvent) => {
+                if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                    setIsMenuOpen(false);
+                }
+            };
+            document.addEventListener("mousedown", handleClickOutside);
+            return () => document.removeEventListener("mousedown", handleClickOutside);
+        }, []);
+
+        return (
+            <div className="relative">
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/png, image/jpeg, image/webp" />
+                <label className="text-xs text-slate-400 block mb-1">{label}</label>
+                {image ? (
+                    <div className={`relative group aspect-video rounded-md overflow-hidden ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                        <img src={image.src} alt={label} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <p className="text-sm">點擊更換</p>
+                            <button onClick={(e) => { e.stopPropagation(); if(!disabled) setImage(null); }} disabled={disabled} className="absolute top-1 right-1 p-0.5 bg-black/60 rounded-full text-white"><XIcon className="w-3 h-3"/></button>
+                        </div>
+                    </div>
+                ) : (
+                    <div onClick={() => !disabled && setIsMenuOpen(true)} className={`flex flex-col items-center justify-center w-full h-full aspect-video bg-black/30 rounded-lg border-2 border-dashed border-fuchsia-500/20 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-fuchsia-500'}`}>
+                        <PlusIcon className="w-6 h-6 text-slate-500" />
+                        <p className="text-xs text-slate-500 mt-1">點擊上傳</p>
+                    </div>
+                )}
+                {isMenuOpen && (
+                    <div ref={menuRef} className="absolute z-10 top-full mt-2 w-full bg-slate-800 rounded-md shadow-lg p-2 space-y-2 text-sm">
+                        <button onClick={() => { fileInputRef.current?.click(); setIsMenuOpen(false); }} className="w-full flex items-center gap-2 p-2 hover:bg-slate-700 rounded-md"><ImportIcon className="w-4 h-4"/>從檔案</button>
+                        <button onClick={() => { setIsWebcamOpen(true); setIsMenuOpen(false); }} className="w-full flex items-center gap-2 p-2 hover:bg-slate-700 rounded-md"><CameraIcon className="w-4 h-4"/>攝像頭</button>
+                        <button onClick={() => { handlePasteFromClipboard(); setIsMenuOpen(false); }} className="w-full flex items-center gap-2 p-2 hover:bg-slate-700 rounded-md"><ClipboardIcon className="w-4 h-4"/>剪貼簿</button>
+                    </div>
+                )}
+                {isWebcamOpen && <WebcamCapture onClose={() => setIsWebcamOpen(false)} onImageSelect={handleImageSelect} />}
+            </div>
+        );
+    };
+
     const renderVeoPanel = () => {
-        
         const handleVeoFunctionButtonClick = (promptText: string) => {
             props.setVeoPrompt(prev => prev.trim() ? `${prev.trim()}, ${promptText}` : promptText);
         };
-
-        const FrameUploader: React.FC<{
-            label: string;
-            image: UploadedImage | null;
-            setImage: (image: UploadedImage | null) => void;
-            disabled?: boolean;
-        }> = ({ label, image, setImage, disabled }) => (
-            <div>
-                 <label className="text-xs text-slate-400 block mb-1">{label}</label>
-                 <ImageUploader onImageUpload={(img) => setImage(img)} disabled={disabled}>
-                    {image ? (
-                        <div className={`relative group aspect-video rounded-md overflow-hidden ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                            <img src={image.src} alt={label} className="w-full h-full object-cover" />
-                             <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <p className="text-sm">點擊更換</p>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); if(!disabled) setImage(null); }}
-                                    disabled={disabled}
-                                    className="absolute top-1 right-1 p-0.5 bg-black/60 rounded-full text-white"
-                                >
-                                     <XIcon className="w-3 h-3"/>
-                                </button>
-                             </div>
-                        </div>
-                    ) : (
-                        <div className={`flex flex-col items-center justify-center w-full h-full aspect-video bg-black/30 rounded-lg border-2 border-dashed border-fuchsia-500/20 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-fuchsia-500'}`}>
-                             <PlusIcon className="w-6 h-6 text-slate-500" />
-                             <p className="text-xs text-slate-500 mt-1">點擊上傳</p>
-                         </div>
-                    )}
-                 </ImageUploader>
-            </div>
-        );
 
         return (
             <>
                 <Section title="提示詞">
                     <div className="relative">
-                        <textarea
+                        <AutosizeTextarea
                             value={props.veoPrompt}
                             onChange={(e) => props.setVeoPrompt(e.target.value)}
                             placeholder="一位太空人，在一個廢棄的太空艙裡，凝視著窗外的星空..."
-                            className="w-full h-24 p-2 bg-gray-800/50 rounded-lg text-sm placeholder-slate-500 focus:ring-2 focus:ring-fuchsia-500 focus:outline-none resize-y"
+                            className="w-full p-2 bg-gray-800/50 rounded-lg text-sm placeholder-slate-500 focus:ring-2 focus:ring-fuchsia-500 focus:outline-none resize-none min-h-[6rem]"
                             disabled={props.isAnalyzingFrames}
                         />
                         {props.isAnalyzingFrames && (
@@ -704,8 +753,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                 
                 <Section title="AI 導演">
                     <div className="grid grid-cols-2 gap-3">
-                        <FrameUploader label="首幀 (可選)" image={props.startFrame} setImage={props.onStartFrameChange} disabled={props.isAnalyzingFrames} />
-                        <FrameUploader label="尾幀 (可選)" image={props.endFrame} setImage={props.onEndFrameChange} disabled={props.isAnalyzingFrames} />
+                        <VeoFrameUploader label="首幀 (可選)" image={props.startFrame} setImage={props.onStartFrameChange} disabled={props.isAnalyzingFrames} />
+                        <VeoFrameUploader label="尾幀 (可選)" image={props.endFrame} setImage={props.onEndFrameChange} disabled={props.isAnalyzingFrames} />
                     </div>
                 </Section>
                 

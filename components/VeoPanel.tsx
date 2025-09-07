@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import type { VeoHistoryItem } from '../types';
 import { DownloadIcon, TrashIcon, VideoCameraIcon, RegenerateIcon, TextIcon, RestoreIcon } from './Icon';

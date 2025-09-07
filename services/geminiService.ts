@@ -82,7 +82,7 @@ export const getEditingSuggestion = async (file: File): Promise<{ description: s
             parts: [
                 { inlineData: { data: base64Data, mimeType } },
                 { text: `Analyze this image and the provided editing guide.
-                1.  First, briefly describe the main subject and scene in traditional Chinese.
+                1.  First, briefly describe the main subject and scene in traditional Chinese. The description should be concise and engaging.
                 2.  Second, based on your description, choose the single most fitting editing prompt from the guide that would be a creative and interesting modification.
                 
                 Editing Guide: ${editingGuideString}
@@ -95,15 +95,17 @@ export const getEditingSuggestion = async (file: File): Promise<{ description: s
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    description: { type: Type.STRING },
-                    suggestion: { type: Type.STRING }
-                }
+                    description: { type: Type.STRING, description: '對圖片的簡潔中文描述' },
+                    suggestion: { type: Type.STRING, description: '從指南中選擇的最推薦的改圖提示' }
+                },
+                propertyOrdering: ["description", "suggestion"]
             }
         }
     });
 
     try {
-        const json = JSON.parse(response.text.trim());
+        const jsonText = response.text.trim();
+        const json = JSON.parse(jsonText);
         if (json.description && json.suggestion) {
             return json;
         }

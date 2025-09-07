@@ -1,7 +1,7 @@
 import React from 'react';
 import type { HistoryItem, AppMode, Toast } from '../types';
 import { downloadImage, formatFileSize, getAspectRatio } from '../utils';
-import { TrashIcon, ImportIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, EraseIcon, PaintBrushIcon } from './Icon';
+import { TrashIcon, ImportIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
 
 interface AnalysisPanelProps {
   image: HistoryItem;
@@ -13,6 +13,7 @@ interface AnalysisPanelProps {
   onUseImage: (src: string, targetMode: AppMode) => void;
   onUpscale: (src: string) => void;
   onZoomOut: (src: string) => void;
+  onSendImageToVeo: (src: string, frame: 'start' | 'end') => void;
 }
 
 const ActionButton: React.FC<{ onClick: () => void; icon: React.FC<any>; label: string; disabled?: boolean }> = 
@@ -60,6 +61,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     onUseImage,
     onUpscale,
     onZoomOut,
+    onSendImageToVeo,
 }) => {
   const handleDownload = () => {
     const safeFilename = image.alt.replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '_').toLowerCase();
@@ -94,6 +96,8 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
                 <ActionButton onClick={() => onUseImage(image.src, 'DRAW')} icon={PaintBrushIcon} label="設為畫布背景" />
                 <ActionButton onClick={() => onUpscale(image.src)} icon={ExpandIcon} label="提升畫質" />
                 <ActionButton onClick={() => onZoomOut(image.src)} icon={ZoomOutIcon} label="Zoom Out" />
+                <ActionButton onClick={() => onSendImageToVeo(image.src, 'start')} icon={SendToStartFrameIcon} label="用於首幀" />
+                <ActionButton onClick={() => onSendImageToVeo(image.src, 'end')} icon={SendToEndFrameIcon} label="用於尾幀" />
             </div>
             <div className="mt-2">
                 <ActionButton onClick={() => onDeleteHistoryItem(image.id)} icon={TrashIcon} label="刪除此紀錄" />

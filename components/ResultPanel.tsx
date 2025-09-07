@@ -1,9 +1,6 @@
-
-
-
 import React from 'react';
 import type { GeneratedImage } from '../types';
-import { EyeIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, ImportIcon, EraseIcon, PaintBrushIcon } from './Icon';
+import { EyeIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, ImportIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
 import { downloadImage, formatFileSize } from '../utils';
 import { EXAMPLE_PROMPTS } from '../constants';
 
@@ -16,6 +13,7 @@ interface ResultPanelProps {
   onZoomOut: (item: GeneratedImage) => void;
   onSetLightboxConfig: (images: GeneratedImage[], startIndex: number) => void;
   onUseImage: (image: GeneratedImage, action: 'reference' | 'remove_bg' | 'draw_bg') => void;
+  onSendImageToVeo: (src: string, frame: 'start' | 'end') => void;
 }
 
 const ImageCard: React.FC<{
@@ -26,7 +24,8 @@ const ImageCard: React.FC<{
     onZoomOut: (item: GeneratedImage) => void;
     onSetLightboxConfig: (images: GeneratedImage[], startIndex: number) => void;
     onUseImage: (image: GeneratedImage, action: 'reference' | 'remove_bg' | 'draw_bg') => void;
-}> = ({ image, index, images, onUpscale, onZoomOut, onSetLightboxConfig, onUseImage }) => {
+    onSendImageToVeo: (src: string, frame: 'start' | 'end') => void;
+}> = ({ image, index, images, onUpscale, onZoomOut, onSetLightboxConfig, onUseImage, onSendImageToVeo }) => {
     
     const handleDownload = () => {
         const safeFilename = (image.prompt || image.alt).replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '_').toLowerCase();
@@ -37,15 +36,17 @@ const ImageCard: React.FC<{
         <div className="relative group aspect-square bg-black rounded-lg overflow-hidden">
             <img src={image.src} alt={image.alt} className="w-full h-full object-contain transition-transform group-hover:scale-105" />
             <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-2">
-                <p className="text-xs text-center text-slate-300 mb-3 max-h-16 overflow-hidden">{image.alt}</p>
-                <div className="grid grid-cols-3 gap-3">
+                <p className="text-xs text-center text-slate-300 mb-3 max-h-12 overflow-hidden">{image.alt}</p>
+                <div className="grid grid-cols-3 gap-2">
                     <button onClick={() => onUseImage(image, 'reference')} title="作為參考圖" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <ImportIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onUseImage(image, 'remove_bg')} title="移除背景" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <EraseIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onUseImage(image, 'draw_bg')} title="設為畫布背景" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <PaintBrushIcon className="w-5 h-5" /> </button>
                     <button onClick={handleDownload} title="下載圖片" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <DownloadIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onSetLightboxConfig(images, index)} title="放大檢視" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <EyeIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onUpscale(image.src)} title="提升畫質" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <ExpandIcon className="w-5 h-5" /> </button>
-                    <button onClick={() => onZoomOut(image)} title="Zoom out 2x" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors col-start-2"> <ZoomOutIcon className="w-5 h-5" /> </button>
+                    <button onClick={() => onZoomOut(image)} title="Zoom out 2x" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <ZoomOutIcon className="w-5 h-5" /> </button>
+                    <button onClick={() => onSendImageToVeo(image.src, 'start')} title="用於首幀" className="p-2 text-white bg-cyan-800/80 rounded-full hover:bg-cyan-600 transition-colors"> <SendToStartFrameIcon className="w-5 h-5" /> </button>
+                    <button onClick={() => onSendImageToVeo(image.src, 'end')} title="用於尾幀" className="p-2 text-white bg-cyan-800/80 rounded-full hover:bg-cyan-600 transition-colors"> <SendToEndFrameIcon className="w-5 h-5" /> </button>
                 </div>
             </div>
             {image.width && image.height && image.size && (
@@ -58,7 +59,7 @@ const ImageCard: React.FC<{
 };
 
 
-export const ResultPanel: React.FC<ResultPanelProps> = ({ images, isLoading, error, onPromptSelect, onUpscale, onZoomOut, onSetLightboxConfig, onUseImage }) => {
+export const ResultPanel: React.FC<ResultPanelProps> = ({ images, isLoading, error, onPromptSelect, onUpscale, onZoomOut, onSetLightboxConfig, onUseImage, onSendImageToVeo }) => {
 
   const hasContent = images.length > 0 || isLoading || error;
 
@@ -92,6 +93,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({ images, isLoading, err
                     onZoomOut={onZoomOut} 
                     onSetLightboxConfig={onSetLightboxConfig}
                     onUseImage={onUseImage}
+                    onSendImageToVeo={onSendImageToVeo}
                 />
               ))}
             </div>
@@ -100,7 +102,6 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({ images, isLoading, err
       ) : (
         <div className="flex flex-col items-center justify-center text-center h-full text-slate-400 p-4">
             <img 
-                // Fix: Replaced invalid base64 string with a valid transparent pixel for the logo.
                 src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" 
                 alt="鳥巢AI包娜娜 Logo" 
                 className="w-32 h-32 mb-6" 

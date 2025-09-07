@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ResultPanel } from './components/ResultPanel';
@@ -43,6 +41,8 @@ const App: React.FC = () => {
     const [referenceImages, setReferenceImages] = useState<UploadedImage[]>([]);
     const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>('1:1');
     const [isOptimizing, setIsOptimizing] = useState(false);
+    const [isSuggestingEdit, setIsSuggestingEdit] = useState(false);
+    const prevRefImagesCount = useRef(0);
 
     // --- Remove BG Mode State ---
     const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null);
@@ -95,12 +95,10 @@ const App: React.FC = () => {
             console.error("Failed to load history from localStorage", e);
         }
         
-        // Detect OS for modifier key
         if (navigator.userAgent.indexOf("Mac") !== -1) {
             setModifierKey("⌘");
         }
 
-        // Handle responsive design
         const handleResize = () => setIsMobile(window.innerWidth < 768);
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
@@ -112,20 +110,48 @@ const App: React.FC = () => {
             localStorage.setItem('image-gen-history', JSON.stringify(history));
         } catch (e) {
             console.error("Failed to save history to localStorage", e);
-            // Don't save VEO history to avoid storage limits
         }
     }, [history]);
 
-
-    // --- Utility Functions ---
     const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
         const id = crypto.randomUUID();
         setToasts(prev => [...prev, { id, message, type }]);
         setTimeout(() => {
             setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
-        }, 3000);
+        }, 5000); // Increased duration for important messages
     }, []);
-    
+
+    // AI Editing Advisor Effect
+    useEffect(() => {
+        const handleSuggestion = async () => {
+            if (appMode === 'GENERATE' && referenceImages.length > prevRefImagesCount.current) {
+                const newImage = referenceImages[referenceImages.length - 1];
+                if (newImage && !newImage.isPlaceholder) {
+                    setIsSuggestingEdit(true);
+                    addToast("AI改圖顧問分析中...", "info");
+                    try {
+                        const { description, suggestion } = await geminiService.getEditingSuggestion(newImage.file);
+                        setPrompt(p => {
+                            const currentPrompt = p ? p.trim() + "\n\n" : "";
+                            const newFullPrompt = currentPrompt + suggestion;
+                            addToast(`為您推薦改圖：${description}`, "success");
+                            return newFullPrompt;
+                        });
+                    } catch (err) {
+                        const message = err instanceof Error ? err.message : '未知錯誤';
+                        addToast(`建議獲取失敗: ${message}`, "error");
+                    } finally {
+                        setIsSuggestingEdit(false);
+                    }
+                }
+            }
+            prevRefImagesCount.current = referenceImages.length;
+        };
+        handleSuggestion();
+    }, [referenceImages, appMode, addToast]);
+
+
+    // --- Utility Functions ---
     const addToHistory = useCallback(async (newImages: Omit<GeneratedImage, 'width' | 'height' | 'size'>[]) => {
         const newHistoryItems: HistoryItem[] = [];
         for(const image of newImages) {
@@ -331,6 +357,21 @@ const App: React.FC = () => {
         }
         setVeoHistory(h => h.filter(item => item.id !== id));
     };
+
+    const handleSendImageToVeo = useCallback((src: string, frame: 'start' | 'end') => {
+        const file = dataURLtoFile(src, `veo-frame-${frame}.png`);
+        const uploadedImage: UploadedImage = { src, file };
+        
+        if (frame === 'start') {
+            handleStartFrameChange(uploadedImage);
+        } else {
+            handleEndFrameChange(uploadedImage);
+        }
+        
+        setAppMode('VEO');
+        setLightboxConfig(null);
+        addToast(`圖片已傳送至 ${frame === 'start' ? '首幀' : '尾幀'}`, 'success');
+    }, [addToast]);
 
     // --- UI Handlers ---
 
@@ -573,6 +614,7 @@ const App: React.FC = () => {
                         const item = history.find(h => h.src === src);
                         if (item) onZoomOut(item);
                     }}
+                    onSendImageToVeo={handleSendImageToVeo}
                 />;
             case 'DRAW':
                 return <main className="flex-1 flex flex-col p-2 md:p-4 bg-black min-w-0"><DrawingCanvas 
@@ -607,6 +649,7 @@ const App: React.FC = () => {
                     onZoomOut={onZoomOut}
                     onSetLightboxConfig={(images, startIndex) => setLightboxConfig({ images, startIndex })}
                     onUseImage={onUseImage}
+                    onSendImageToVeo={handleSendImageToVeo}
                 />;
         }
     };
@@ -625,10 +668,10 @@ const App: React.FC = () => {
         onDrawBackgroundUpload: (file: File) => {
             const reader = new FileReader();
             reader.onload = (e) => setDrawBackgroundImage(e.target?.result as string);
-            // Fix: Corrected typo from readDataAsURL to readAsDataURL
             reader.readAsDataURL(file);
         },
         isControlPanelOpen, setIsControlPanelOpen, isMobile, modifierKey,
+        isSuggestingEdit,
         // VEO Props
         veoPrompt, setVeoPrompt, startFrame, onStartFrameChange: handleStartFrameChange, endFrame, onEndFrameChange: handleEndFrameChange,
         veoAspectRatio, setVeoAspectRatio, videoDuration, setVideoDuration, onGenerateVeo: handleGenerateVeo, isGeneratingVideo, isAnalyzingFrames
@@ -653,6 +696,7 @@ const App: React.FC = () => {
                     onUpscale={onUpscale}
                     onZoomOut={onZoomOut}
                     onUseImage={onUseImage}
+                    onSendImageToVeo={handleSendImageToVeo}
                 />
             )}
             

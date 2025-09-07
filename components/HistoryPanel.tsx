@@ -17,6 +17,7 @@ interface HistoryPanelProps {
   onUseImage: (src: string, targetMode: AppMode) => void;
   onUpscale: (src: string) => void;
   onZoomOut: (src: string) => void;
+  onSendImageToVeo: (src: string, frame: 'start' | 'end') => void;
 }
 
 const HistoryGallery: React.FC<{
@@ -72,6 +73,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
   onClearHistory,
   onSetLightboxConfig,
   addToast,
+  onSendImageToVeo,
   ...analysisPanelProps
 }) => {
   return (
@@ -87,6 +89,7 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
                     onUseHistoryItem={onUseHistoryItem}
                     onDeleteHistoryItem={onDeleteHistoryItem}
                     addToast={addToast}
+                    onSendImageToVeo={onSendImageToVeo}
                     {...analysisPanelProps}
                  />
             ) : (

@@ -5,7 +5,7 @@ import {
     XCircleIcon, UndoIcon, RectangleIcon, CircleIcon, ArrowUpRightIcon, CameraIcon, ImportIcon, XIcon,
     ClipboardIcon, UserCircleIcon, VideoCameraIcon
 } from './Icon';
-import { ASPECT_RATIOS, FUNCTION_BUTTONS, ART_STYLES_LIST, EDITING_EXAMPLES, CHARACTER_CREATOR_SECTIONS, VEO_ASPECT_RATIOS, VEO_QUICK_PROMPTS } from '../constants';
+import { ASPECT_RATIOS, FUNCTION_BUTTONS, ART_STYLES_LIST, EDITING_EXAMPLES, CHARACTER_CREATOR_SECTIONS, VEO_ASPECT_RATIOS, VEO_MEME_PROMPTS } from '../constants';
 import { enhanceWebcamImage } from '../services/geminiService';
 import { ColorPicker } from './ColorPicker';
 import { dataURLtoFile } from '../utils';
@@ -609,6 +609,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
 
     const renderVeoPanel = () => {
         
+        const handleVeoFunctionButtonClick = (promptText: string) => {
+            props.setVeoPrompt(prev => prev.trim() ? `${prev.trim()}, ${promptText}` : promptText);
+        };
+
         const FrameUploader: React.FC<{
             label: string;
             image: UploadedImage | null;
@@ -658,12 +662,22 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                         </button>
                     </div>
                 </Section>
+                
+                <div className="mb-4 space-y-2">
+                    <Accordion title="世界Top100藝術風格">
+                        <div className="max-h-32 overflow-y-auto pr-1 flex flex-wrap gap-1">
+                            {ART_STYLES_LIST.map(style => (
+                                <button key={style.en} onClick={() => handleVeoFunctionButtonClick(style.en)} className="px-2 py-0.5 bg-slate-700/50 text-xs rounded hover:bg-fuchsia-600">{style.zh}</button>
+                            ))}
+                        </div>
+                    </Accordion>
+                </div>
 
-                <Section title="快速提示">
+                <Section title="幽默迷因">
                      <div className="flex flex-wrap gap-2">
-                        {VEO_QUICK_PROMPTS.map(p => (
-                            <button key={p} onClick={() => props.setVeoPrompt(p)} className="px-3 py-1 bg-slate-800/70 text-xs rounded-full hover:bg-cyan-600/50 hover:text-cyan-300">
-                                {p}
+                        {VEO_MEME_PROMPTS.map(p => (
+                            <button key={p.label} onClick={() => props.setVeoPrompt(p.prompt)} title={p.prompt} className="px-3 py-1 bg-slate-800/70 text-xs rounded-full hover:bg-cyan-600/50 hover:text-cyan-300">
+                                {p.label}
                             </button>
                         ))}
                     </div>

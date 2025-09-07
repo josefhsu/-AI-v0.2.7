@@ -48,7 +48,7 @@ export const generateImagesWithGemini = async (
     // Use generateContent for multimodal prompts (text + image)
     if (imageParts.length > 0) {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image-preview', // Use the image editing model for multimodal input
+            model: 'gemini-2.5-flash', // Use the image editing model for multimodal input
             contents: contents,
             config: {
                 responseModalities: [Modality.IMAGE, Modality.TEXT],
@@ -67,7 +67,8 @@ export const generateImagesWithGemini = async (
             model: 'imagen-4.0-generate-001',
             prompt: prompt,
             config: {
-                numberOfImages: 4, // Let's generate 4 images at a time
+                // FIX: Changed numberOfImages to 1 to align with documentation examples.
+                numberOfImages: 1, // Let's generate 1 image at a time
                 outputMimeType: 'image/png',
                 aspectRatio: aspectRatio as "1:1" | "3:4" | "4:3" | "9:16" | "16:9",
             },

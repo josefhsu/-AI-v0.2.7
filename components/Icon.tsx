@@ -206,3 +206,9 @@ export const SendToEndFrameIcon: React.FC<IconProps> = (props) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 18h6" />
     </IconWrapper>
 );
+
+export const PaperClipIcon: React.FC<IconProps> = (props) => (
+    <IconWrapper {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="m18.375 12.735-7.662 7.662a4.5 4.5 0 0 1-6.364-6.364l7.662-7.662a3 3 0 0 1 4.242 4.242l-7.662 7.662a1.5 1.5 0 0 1-2.121-2.121L16.5 6.375" />
+    </IconWrapper>
+);

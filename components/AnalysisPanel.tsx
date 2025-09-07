@@ -1,7 +1,7 @@
 import React from 'react';
 import type { HistoryItem, AppMode, Toast } from '../types';
 import { downloadImage, formatFileSize, getAspectRatio } from '../utils';
-import { TrashIcon, ImportIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
+import { TrashIcon, PaperClipIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
 
 interface AnalysisPanelProps {
   image: HistoryItem;
@@ -90,7 +90,7 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider">操作</h3>
             <div className="grid grid-cols-2 gap-2">
-                <ActionButton onClick={() => onUseHistoryItem(image)} icon={ImportIcon} label="作為參考圖" />
+                <ActionButton onClick={() => onUseHistoryItem(image)} icon={PaperClipIcon} label="作為參考圖" />
                 <ActionButton onClick={handleDownload} icon={DownloadIcon} label="下載圖片" />
                 <ActionButton onClick={() => onUseImage(image.src, 'REMOVE_BG')} icon={EraseIcon} label="移除背景" />
                 <ActionButton onClick={() => onUseImage(image.src, 'DRAW')} icon={PaintBrushIcon} label="設為畫布背景" />

@@ -382,6 +382,15 @@ const App: React.FC = () => {
         addToast("設定已清除");
     }, [addToast]);
     
+    const onClearVeoSettings = useCallback(() => {
+        setVeoPrompt('');
+        setStartFrame(null);
+        setEndFrame(null);
+        setVeoAspectRatio('16:9');
+        setVideoDuration(5);
+        addToast("Veo 設定已清除");
+    }, [addToast]);
+    
     const onInspirePrompt = useCallback(async () => {
         setIsOptimizing(true); // Reuse optimizing state for loading indicator
         try {
@@ -535,10 +544,18 @@ const App: React.FC = () => {
                  if (appMode === 'GENERATE' || appMode === 'CHARACTER_CREATOR') handleGenerate();
                  else if (appMode === 'REMOVE_BG') handleRemoveBackground();
                  else if (appMode === 'DRAW') handleUseDrawing();
+                 else if (appMode === 'VEO') handleGenerateVeo();
              }
              if (isMod && key === 'o') { e.preventDefault(); handleOptimizePrompt(); }
              if (isMod && key === 'i') { e.preventDefault(); onInspirePrompt(); }
-             if (isMod && key === 'backspace') { e.preventDefault(); onClearSettings(); }
+             if (isMod && key === 'backspace') {
+                 e.preventDefault();
+                 if (appMode === 'VEO') {
+                    onClearVeoSettings();
+                 } else {
+                    onClearSettings();
+                 }
+             }
              
              if (appMode === 'DRAW') {
                 if (isMod && key === 'z') { e.preventDefault(); drawCanvasRef.current?.undo(); }
@@ -549,7 +566,7 @@ const App: React.FC = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [appMode, handleGenerate, handleRemoveBackground, handleUseDrawing, handleOptimizePrompt, onInspirePrompt, onClearSettings]);
+    }, [appMode, handleGenerate, handleRemoveBackground, handleUseDrawing, handleOptimizePrompt, onInspirePrompt, onClearSettings, handleGenerateVeo, onClearVeoSettings]);
     
     // --- Paste from clipboard ---
     useEffect(() => {

@@ -1,6 +1,7 @@
+// Fix: Restored the component's implementation to fix file corruption.
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { GeneratedImage, LightboxConfig } from '../types';
-import { XIcon, ArrowLeftIcon, ArrowRightIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, ImportIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
+import { XIcon, ArrowLeftIcon, ArrowRightIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, PaperClipIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
 import { downloadImage } from '../utils';
 
 interface LightboxProps {
@@ -173,7 +174,7 @@ export const Lightbox: React.FC<LightboxProps> = ({ config, onClose, onUpscale, 
             
             <div className="relative w-full max-w-4xl p-4 text-center text-slate-300 text-sm z-20 bg-gradient-to-t from-black/50 to-transparent">
                 <div className="flex justify-center items-center flex-wrap gap-3">
-                    <button onClick={() => onUseImage(currentImage, 'reference')} title="作為參考圖" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <ImportIcon className="w-5 h-5" /> </button>
+                    <button onClick={() => onUseImage(currentImage, 'reference')} title="作為參考圖" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <PaperClipIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onUseImage(currentImage, 'remove_bg')} title="移除背景" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <EraseIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onUseImage(currentImage, 'draw_bg')} title="設為畫布背景" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <PaintBrushIcon className="w-5 h-5" /> </button>
                     <button onClick={handleDownload} title="下載圖片" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <DownloadIcon className="w-5 h-5" /> </button>

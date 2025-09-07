@@ -1,6 +1,7 @@
+// Fix: Restored the component's implementation to fix file corruption.
 import React from 'react';
 import type { GeneratedImage } from '../types';
-import { EyeIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, ImportIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
+import { EyeIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, PaperClipIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
 import { downloadImage, formatFileSize } from '../utils';
 import { EXAMPLE_PROMPTS } from '../constants';
 
@@ -38,7 +39,7 @@ const ImageCard: React.FC<{
             <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-2">
                 <p className="text-xs text-center text-slate-300 mb-3 max-h-12 overflow-hidden">{image.alt}</p>
                 <div className="grid grid-cols-3 gap-2">
-                    <button onClick={() => onUseImage(image, 'reference')} title="作為參考圖" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <ImportIcon className="w-5 h-5" /> </button>
+                    <button onClick={() => onUseImage(image, 'reference')} title="作為參考圖" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <PaperClipIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onUseImage(image, 'remove_bg')} title="移除背景" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <EraseIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onUseImage(image, 'draw_bg')} title="設為畫布背景" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <PaintBrushIcon className="w-5 h-5" /> </button>
                     <button onClick={handleDownload} title="下載圖片" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <DownloadIcon className="w-5 h-5" /> </button>

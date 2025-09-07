@@ -1,11 +1,12 @@
 
+
 import React, { useState, useEffect } from 'react';
 import type { VeoHistoryItem } from '../types';
 import { DownloadIcon, TrashIcon, VideoCameraIcon, RegenerateIcon, TextIcon, RestoreIcon } from './Icon';
 import { downloadImage } from '../utils';
 
 type ActionButtonProps = {
-    // FIX: Changed onClick prop to accept a mouse event to allow for event handling like stopPropagation.
+    // Fix: Changed onClick prop to accept a mouse event to allow for event handling like stopPropagation.
     onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
     icon: React.FC<React.SVGProps<SVGSVGElement>>;
     label: string;

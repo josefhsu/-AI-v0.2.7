@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ResultPanel } from './components/ResultPanel';
@@ -624,7 +625,7 @@ const App: React.FC = () => {
         onDrawBackgroundUpload: (file: File) => {
             const reader = new FileReader();
             reader.onload = (e) => setDrawBackgroundImage(e.target?.result as string);
-            // FIX: Corrected typo from readDataAsURL to readAsDataURL
+            // Fix: Corrected typo from readDataAsURL to readAsDataURL
             reader.readAsDataURL(file);
         },
         isControlPanelOpen, setIsControlPanelOpen, isMobile, modifierKey,

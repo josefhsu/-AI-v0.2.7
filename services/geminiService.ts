@@ -1,7 +1,7 @@
-
 import { GoogleGenAI, Modality, Part, Type } from "@google/genai";
 import type { AspectRatio, GeneratedImage, UploadedImage, VeoAspectRatio, VeoHistoryItem, VeoParams, Toast } from "../types";
 import { fileToBase64, generateVideoThumbnail, createCompositeImage, dataURLtoFile } from "../utils";
+import { EDITING_EXAMPLES } from "../constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -70,6 +70,50 @@ export const generateImages = async (
         }));
     }
 };
+
+export const getEditingSuggestion = async (file: File): Promise<{ description: string, suggestion: string }> => {
+    const base64Data = await fileToBase64(file);
+    const mimeType = file.type;
+    const editingGuideString = JSON.stringify(EDITING_EXAMPLES);
+
+    const response = await ai.models.generateContent({
+        model: GENERAL_MODEL,
+        contents: {
+            parts: [
+                { inlineData: { data: base64Data, mimeType } },
+                { text: `Analyze this image and the provided editing guide.
+                1.  First, briefly describe the main subject and scene in traditional Chinese.
+                2.  Second, based on your description, choose the single most fitting editing prompt from the guide that would be a creative and interesting modification.
+                
+                Editing Guide: ${editingGuideString}
+                
+                Return a JSON object with two keys: "description" (your analysis in traditional Chinese) and "suggestion" (the exact prompt string from the guide).` },
+            ]
+        },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    description: { type: Type.STRING },
+                    suggestion: { type: Type.STRING }
+                }
+            }
+        }
+    });
+
+    try {
+        const json = JSON.parse(response.text.trim());
+        if (json.description && json.suggestion) {
+            return json;
+        }
+        throw new Error("Invalid JSON structure in suggestion response.");
+    } catch (e) {
+        console.error("Failed to parse suggestion JSON:", e, "Raw response:", response.text);
+        throw new Error("Failed to get a valid editing suggestion from the AI.");
+    }
+};
+
 
 export const removeBackground = async (file: File, addGreenScreen: boolean): Promise<string> => {
     const base64Data = await fileToBase64(file);
@@ -271,7 +315,7 @@ export const generateVeoVideo = async (params: VeoParams, addToast: (message: st
     while (!operation.done) {
         await new Promise(resolve => setTimeout(resolve, 10000)); // Poll every 10 seconds
         operation = await ai.operations.getVideosOperation({ operation: operation });
-        // FIX: The progressPercentage can be of type 'unknown' from the SDK. Cast it to a number before use.
+        // Fix: The progressPercentage can be of type 'unknown' from the SDK. Cast it to a number before use.
         const progress = Number((operation.metadata as any)?.progressPercentage) || 0;
         addToast(`影片生成進度: ${Math.round(progress)}%`, 'info');
     }

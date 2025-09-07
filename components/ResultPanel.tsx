@@ -1,5 +1,6 @@
 
 
+
 import React from 'react';
 import type { GeneratedImage } from '../types';
 import { EyeIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, ImportIcon, EraseIcon, PaintBrushIcon } from './Icon';
@@ -99,7 +100,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({ images, isLoading, err
       ) : (
         <div className="flex flex-col items-center justify-center text-center h-full text-slate-400 p-4">
             <img 
-                // FIX: Replaced placeholder base64 string with a valid transparent pixel.
+                // Fix: Replaced invalid base64 string with a valid transparent pixel for the logo.
                 src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" 
                 alt="鳥巢AI包娜娜 Logo" 
                 className="w-32 h-32 mb-6" 

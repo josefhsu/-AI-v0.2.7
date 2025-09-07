@@ -5,7 +5,7 @@ import {
     XCircleIcon, UndoIcon, RectangleIcon, CircleIcon, ArrowUpRightIcon, CameraIcon, ImportIcon, XIcon,
     ClipboardIcon, UserCircleIcon, VideoCameraIcon
 } from './Icon';
-import { ASPECT_RATIOS, FUNCTION_BUTTONS, ART_STYLES_LIST, EDITING_EXAMPLES, CHARACTER_CREATOR_SECTIONS, VEO_ASPECT_RATIOS, VEO_MEME_PROMPTS } from '../constants';
+import { ASPECT_RATIOS, FUNCTION_BUTTONS, ART_STYLES_LIST, EDITING_EXAMPLES, CHARACTER_CREATOR_SECTIONS, VEO_ASPECT_RATIOS, VEO_MEME_PROMPTS, DIRECTOR_STYLES } from '../constants';
 import { enhanceWebcamImage } from '../services/geminiService';
 import { ColorPicker } from './ColorPicker';
 import { dataURLtoFile } from '../utils';
@@ -736,6 +736,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                         <div className="max-h-32 overflow-y-auto pr-1 flex flex-wrap gap-1">
                             {ART_STYLES_LIST.map(style => (
                                 <button key={style.en} onClick={() => handleVeoFunctionButtonClick(style.en)} className="px-2 py-0.5 bg-slate-700/50 text-xs rounded hover:bg-fuchsia-600">{style.zh}</button>
+                            ))}
+                        </div>
+                    </Accordion>
+                    <Accordion title="世界知名導演風格">
+                        <div className="max-h-48 overflow-y-auto pr-1">
+                            {DIRECTOR_STYLES.map(style => (
+                                <button 
+                                    key={style.name} 
+                                    onClick={() => handleVeoFunctionButtonClick(style.prompt)} 
+                                    title={style.prompt} 
+                                    className="w-full text-left px-2 py-0.5 bg-slate-700/50 text-xs rounded hover:bg-fuchsia-600 mb-1"
+                                >
+                                    {style.name}
+                                </button>
                             ))}
                         </div>
                     </Accordion>

@@ -1,4 +1,5 @@
-// Fix: Restored the component's implementation to fix file corruption.
+
+
 import React from 'react';
 import type { GeneratedImage } from '../types';
 import { EyeIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, PaperClipIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';

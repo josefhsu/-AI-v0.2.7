@@ -42,6 +42,60 @@ export const VEO_MEME_PROMPTS = [
     { label: '資訊繭房', prompt: "一個被演算法餵養大的年輕人，穿著睡衣癱在沙發上，電視、手機、平板同時播放著同一個網紅推薦的同一部劇，爆米花是演算法推薦的口味。" }
 ];
 
+const rawDirectorStyles = [
+  { name: '李安 (Ang Lee)', prompt: '細膩的情感刻畫，東西方文化交融的衝突與和解，如《臥虎藏龍》般詩意與武俠的結合，或《少年Pi的奇幻漂流》般壯麗的視覺史詩。' },
+  { name: '史蒂芬·史匹柏 (Steven Spielberg)', prompt: '宏偉的史詩感，探索人性的善惡與希望，運用經典的攝影機運動和音樂，營造《侏羅紀公園》或《E.T.》般的奇幻與冒險。' },
+  { name: '馬丁·史柯西斯 (Martin Scorsese)', prompt: '粗獷寫實的城市生活，罪惡與救贖的主題，快速剪輯與獨白，呈現《好傢伙》或《計程車司機》般的黑幫史詩。' },
+  { name: '昆汀·塔倫提諾 (Quentin Tarantino)', prompt: '非線性敘事，風格化的暴力美學，大量流行文化引用和經典配樂，對白充滿張力，如《黑色追緝令》般獨特。' },
+  { name: '克里斯多福·諾蘭 (Christopher Nolan)', prompt: '燒腦的非線性敘事，時間與記憶的哲學探討，IMAX級的宏大視覺效果，低沉配樂，如《全面啟動》或《星際效應》。' },
+  { name: '韋斯·安德森 (Wes Anderson)', prompt: '極致對稱的構圖，鮮豔飽和的復古色調，古怪的角色和細膩的道具設計，充滿童話感，如《布達佩斯大飯店》。' },
+  { name: '阿方索·卡隆 (Alfonso Cuarón)', prompt: '長鏡頭的敘事魔力，如《人類之子》般緊張壓抑的科幻末日，或《羅馬》般細膩的個人史詩，情感豐富。' },
+  { name: '奉俊昊 (Bong Joon-ho)', prompt: '社會批判與黑色幽默，類型片結構下的階級矛盾，如《寄生上流》般從荒誕走向驚悚的氛圍。' },
+  { name: '是枝裕和 (Hirokazu Kore-eda)', prompt: '平實細膩的家庭故事，日常對話中的情感流動，呈現《小偷家族》般溫暖而感傷的現實主義。' },
+  { name: '大衛·芬奇 (David Fincher)', prompt: '冷峻的藍灰色調，精準的剪輯和鏡頭控制，探討人性的黑暗面，如《社群網戰》或《火線追緝令》般的懸疑與緊張。' },
+  { name: '葛莉塔·潔薇 (Greta Gerwig)', prompt: '女性成長與自我探索，充滿智慧和幽默的對白，如《淑女鳥》或《小婦人》般真誠而生動。' },
+  { name: '吉勒摩·戴托羅 (Guillermo del Toro)', prompt: '哥德式奇幻美學，怪物與人性的界線模糊，如《水形物語》般黑暗浪漫的童話故事。' },
+  { name: '宮崎駿 (Hayao Miyazaki)', prompt: '手繪動畫的奇幻世界，環保與和平的主題，充滿想像力的生物和場景，如《神隱少女》般溫暖而深邃。' },
+  { name: '黑澤明 (Akira Kurosawa)', prompt: '武士精神與榮譽，大氣磅礴的史詩感，運用多機位拍攝和精準的構圖，如《七武士》般古典而永恆。' },
+  { name: '張藝謀 (Zhang Yimou)', prompt: '色彩斑斕的視覺美學，史詩般的歷史背景，對抗強權或命運的主題，如《英雄》般詩意的武俠。' },
+  { name: '王家衛 (Wong Kar-wai)', prompt: '迷離的城市夜景，曖昧的情感關係，緩慢的鏡頭與重複的對白，爵士樂與復古氛圍，如《花樣年華》。' },
+  { name: '蔡明亮 (Tsai Ming-liang)', prompt: '極簡主義的長鏡頭，城市邊緣人物的疏離與孤寂，少對白，注重環境聲和肢體語言，如《愛情萬歲》。' },
+  { name: '賈樟柯 (Jia Zhangke)', prompt: '中國社會變遷下的個體命運，寫實而沉鬱的風格，大量非專業演員，如《三峽好人》。' },
+  { name: '佩德羅·阿莫多瓦 (Pedro Almodóvar)', prompt: '鮮豔的色彩與巴洛克風格，複雜的女性視角和情感糾葛，西班牙文化與戲劇性，如《玩美女人》。' },
+  { name: '拉斯·馮·提爾 (Lars von Trier)', prompt: '極具爭議的實驗性風格，對人性的黑暗面進行極端探索，手持攝影與自然光，如《破浪》。' },
+  { name: '大衛·林奇 (David Lynch)', prompt: '超現實主義，詭異的夢境與潛意識，扭曲的現實和神秘符號，如《穆赫蘭大道》般迷幻。' },
+  { name: '泰倫斯·馬力克 (Terrence Malick)', prompt: '詩意的自然光攝影，旁白與意識流敘事，探索人與自然的關係，如《生命之樹》。' },
+  { name: '史丹利·庫柏力克 (Stanley Kubrick)', prompt: '冰冷而精確的攝影，對稱構圖，宏大的哲學命題，如《2001太空漫遊》或《發條橘子》。' },
+  { name: '克林·伊斯威特 (Clint Eastwood)', prompt: '經典的西部片或犯罪片風格，深沉的男性氣概，簡單而有力的敘事，如《不可饒恕》。' },
+  { name: '莉娜·杜漢 (Lena Dunham)', prompt: '年輕女性在城市中的掙扎與成長，帶有自嘲與真實感的幽默，如《女孩我最大》的坦率。' },
+  { name: '莎拉·波利 (Sarah Polley)', prompt: '對家庭關係和記憶的細膩探討，充滿同情心的角色塑造，如《她的時代》般深刻而動人。' },
+  { name: '趙婷 (Chloé Zhao)', prompt: '自然風景中的個人故事，寫實的鏡頭捕捉邊緣人物的生存狀態，如《游牧人生》般詩意而真實。' },
+  { name: '艾娃·杜威內 (Ava DuVernay)', prompt: '歷史題材中的種族與正義，強大的情感驅動，如《逐夢大道》般鼓舞人心。' },
+  { name: '丹尼爾·關 & 丹尼爾·舒奈特 (Daniels - Kwan & Scheinert)', prompt: '瘋狂的創意和天馬行空的敘事，多重宇宙的視覺盛宴，如《媽的多重宇宙》般充滿想像力。' },
+  { name: '艾方索·柯朗 (Alfonso Cuarón)', prompt: '長鏡頭的敘事魔力，如《人類之子》般緊張壓抑的科幻末日，或《羅馬》般細膩的個人史詩，情感豐富。' },
+  { name: '保羅·湯瑪斯·安德森 (Paul Thomas Anderson)', prompt: '複雜的人物心理，社會邊緣人的故事，流暢的攝影機運動，如《黑金企業》般史詩。' },
+  { name: '科恩兄弟 (Coen Brothers)', prompt: '黑色幽默與荒誕諷刺，犯罪故事與意外事件，獨特的對白和地域特色，如《冰血暴》。' },
+  { name: '伍迪·艾倫 (Woody Allen)', prompt: '知識分子式的幽默對白，對愛情、生活和死亡的哲學思考，城市背景，如《安妮霍爾》。' },
+  { name: '麥可·哈內克 (Michael Haneke)', prompt: '對現代社會的冷酷批判，心理驚悚與暴力，長鏡頭和疏離感，如《鋼琴教師》。' },
+  { name: '約翰·卡薩維蒂 (John Cassavetes)', prompt: '寫實的即興表演，對人物心理的深入挖掘，獨立電影的粗獷感，如《受影響的女人》。' },
+  { name: '維托里奧·德西卡 (Vittorio De Sica)', prompt: '義大利新現實主義，關注二戰後普通人的掙扎，如《偷自行車的人》般感人。' },
+  { name: '英格瑪·柏格曼 (Ingmar Bergman)', prompt: '對信仰、死亡和人際關係的哲學探討，黑白影像的強烈對比，特寫鏡頭中的人物內心，如《第七封印》。' },
+  { name: '費德里柯·費里尼 (Federico Fellini)', prompt: '魔幻現實主義，對社會和人性的諷刺，嘉年華般的熱鬧場景與荒誕元素，如《八又二分之一》。' },
+  { name: '安德烈·塔可夫斯基 (Andrei Tarkovsky)', prompt: '詩意的長鏡頭，對記憶、信仰和自然的深刻思考，緩慢而沉靜的節奏，如《潛行者》。' },
+  { name: '尚盧·高達 (Jean-Luc Godard)', prompt: '法國新浪潮的代表，跳躍剪輯，打破第四道牆，對電影形式的實驗，如《斷了氣》。' },
+  { name: '楚浮 (François Truffaut)', prompt: '新浪潮的浪漫主義，對童年和愛情的探索，流暢的敘事和人道關懷，如《四百擊》。' },
+  { name: '路易斯·布紐爾 (Luis Buñuel)', prompt: '超現實主義，對宗教和資產階級的諷刺，夢境與現實的交織，如《中產階級的審慎魅力》。' },
+  { name: '貝爾納多·貝托魯奇 (Bernardo Bertolucci)', prompt: '史詩般的政治與情慾糾葛，華麗的視覺風格，如《末代皇帝》。' },
+  { name: '賽吉歐·李昂尼 (Sergio Leone)', prompt: '經典義大利西部片，特寫鏡頭和廣闊的沙漠風景形成對比，沉默與暴力並存，如《黃昏三鏢客》。' },
+  { name: '溝口健二 (Kenji Mizoguchi)', prompt: '對女性悲劇命運的深刻描繪，長鏡頭與精緻的構圖，如《雨月物語》般古典而淒美。' },
+  { name: '小津安二郎 (Yasujirō Ozu)', prompt: '日常生活的溫馨與感傷，固定機位，低機位視角，家庭關係的細膩觀察，如《東京物語》。' },
+  { name: '侯孝賢 (Hou Hsiao-Hsien)', prompt: '台灣新電影代表，長鏡頭的日常捕捉，對歷史與鄉愁的詩意呈現，如《悲情城市》。' },
+  { name: '楊德昌 (Edward Yang)', prompt: '台北都市生活群像，理性而冷靜的鏡頭，對人際關係和現代化的批判，如《牯嶺街少年殺人事件》。' },
+  { name: '阿巴斯·奇亞羅斯塔米 (Abbas Kiarostami)', prompt: '伊朗新浪潮，模糊紀錄片與劇情片的界線，兒童視角，對生命意義的哲學探討，如《橄欖樹下的情人》。' },
+];
+// Deduplicate the list by director's name, keeping the first entry encountered.
+export const DIRECTOR_STYLES = Array.from(new Map(rawDirectorStyles.map(item => [item.name, item])).values());
+
 
 // Example prompts for the initial screen
 export const EXAMPLE_PROMPTS = [

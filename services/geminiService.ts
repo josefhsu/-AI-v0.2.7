@@ -308,7 +308,7 @@ export const generateVeoVideo = async (params: VeoParams, addToast: (message: st
         } : undefined,
         config: {
             numberOfVideos: 1,
-            aspectRatio: params.aspectRatio,
+            // Fix: Removed unsupported `aspectRatio` property from the generateVideos config.
         }
     });
     

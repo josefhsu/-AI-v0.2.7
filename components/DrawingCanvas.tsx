@@ -1,4 +1,3 @@
-
 import React, { useRef, useEffect, useImperativeHandle, useState, forwardRef, useCallback } from 'react';
 import type { DrawTool, AspectRatio, DrawingCanvasRef } from '../types';
 
@@ -10,20 +9,43 @@ interface DrawingCanvasProps {
     backgroundColor: string;
     aspectRatio: AspectRatio;
     backgroundImage: string | null;
-    isPreviewingBrushSize: boolean;
 }
 
 // A simple in-memory history stack for undo functionality
 const MAX_HISTORY = 20;
 
 export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
-    ({ tool, brushSize, fillColor, strokeColor, backgroundColor, aspectRatio, backgroundImage, isPreviewingBrushSize }, ref) => {
+    ({ tool, brushSize, fillColor, strokeColor, backgroundColor, aspectRatio, backgroundImage }, ref) => {
         const canvasRef = useRef<HTMLCanvasElement>(null);
         const contextRef = useRef<CanvasRenderingContext2D | null>(null);
         const [isDrawing, setIsDrawing] = useState(false);
         const [history, setHistory] = useState<ImageData[]>([]);
         const [startPoint, setStartPoint] = useState<{ x: number, y: number } | null>(null);
         const lastSnapshot = useRef<ImageData | null>(null);
+        
+        const [isHovered, setIsHovered] = useState(false);
+        const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+        const [centeredPreviewSize, setCenteredPreviewSize] = useState<number | null>(null);
+        const previewTimeoutRef = useRef<number | null>(null);
+
+        // Effect for centered preview on brush size change
+        useEffect(() => {
+            setCenteredPreviewSize(brushSize);
+
+            if (previewTimeoutRef.current) {
+                clearTimeout(previewTimeoutRef.current);
+            }
+
+            previewTimeoutRef.current = window.setTimeout(() => {
+                setCenteredPreviewSize(null);
+            }, 2000); // Disappear after 2 seconds
+
+            return () => {
+                if (previewTimeoutRef.current) {
+                    clearTimeout(previewTimeoutRef.current);
+                }
+            };
+        }, [brushSize]);
 
         const getCanvasAndContext = useCallback(() => {
             const canvas = canvasRef.current;
@@ -39,7 +61,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
             setHistory(prev => [...prev.slice(prev.length > MAX_HISTORY ? 1 : 0), data]);
         }, [getCanvasAndContext]);
         
-        const drawBackgroundImage = useCallback(() => {
+        const redrawCanvas = useCallback(() => {
             const { canvas, ctx } = getCanvasAndContext();
             if (!canvas || !ctx) return;
             
@@ -87,18 +109,17 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
                 context.lineJoin = 'round';
                 contextRef.current = context;
                 
-                // Redraw background when aspect ratio changes
                 setHistory([]);
-                drawBackgroundImage();
+                redrawCanvas();
             }
-        }, [aspectRatio, drawBackgroundImage]);
+        }, [aspectRatio, redrawCanvas]);
         
         useEffect(() => {
-            drawBackgroundImage();
+            redrawCanvas();
         // eslint-disable-next-line react-hooks/exhaustive-deps
         }, [backgroundColor, backgroundImage]);
-
-        const getMousePos = (e: React.MouseEvent): { x: number, y: number } => {
+        
+        const getMousePosOnCanvas = (e: React.MouseEvent): { x: number, y: number } => {
             const canvas = canvasRef.current;
             if (!canvas) return { x: 0, y: 0 };
             const rect = canvas.getBoundingClientRect();
@@ -107,14 +128,23 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
                 y: e.clientY - rect.top
             };
         };
+        
+        const handleContainerMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+            const container = e.currentTarget;
+            if (!container) return;
+            const rect = container.getBoundingClientRect();
+            setMousePosition({
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top,
+            });
+        };
 
         const startDrawing = (e: React.MouseEvent) => {
             const { ctx } = getCanvasAndContext();
             if (!ctx) return;
-            const { x, y } = getMousePos(e);
+            const { x, y } = getMousePosOnCanvas(e);
             
-            saveState(); // Save state before starting a new shape/line
-            
+            saveState();
             setIsDrawing(true);
             
             if (tool === 'brush') {
@@ -132,7 +162,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
             if (!isDrawing) return;
             const { ctx } = getCanvasAndContext();
             if (!ctx) return;
-            const { x, y } = getMousePos(e);
+            const { x, y } = getMousePosOnCanvas(e);
 
             ctx.lineWidth = brushSize;
             ctx.strokeStyle = strokeColor;
@@ -184,11 +214,11 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
              if (!canvas || !ctx) return;
              ctx.clearRect(0, 0, canvas.width, canvas.height);
              setHistory([]);
-             drawBackgroundImage();
+             redrawCanvas();
         };
 
         const undo = () => {
-            if (history.length <= 1) { // Keep the initial background state
+            if (history.length <= 1) { 
                 clearCanvas();
                 return;
             }
@@ -209,7 +239,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
         }));
 
         return (
-            <div className="w-full h-full flex items-center justify-center relative">
+            <div 
+                className="w-full h-full flex items-center justify-center relative"
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+                onMouseMove={handleContainerMouseMove}
+            >
                  <canvas
                     ref={canvasRef}
                     onMouseDown={startDrawing}
@@ -218,9 +253,30 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
                     onMouseLeave={stopDrawing}
                     className="rounded-lg shadow-lg"
                  />
-                 {isPreviewingBrushSize && tool === 'brush' && (
-                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-transparent rounded-full pointer-events-none border border-dashed border-white/50"
-                        style={{ width: brushSize, height: brushSize }}
+                 
+                 {centeredPreviewSize !== null && (
+                     <div 
+                        className="absolute bg-transparent rounded-full pointer-events-none border border-dashed border-cyan-400"
+                        style={{
+                            width: centeredPreviewSize,
+                            height: centeredPreviewSize,
+                            top: '50%',
+                            left: '50%',
+                            transform: `translate(-50%, -50%)`,
+                        }}
+                     />
+                 )}
+                 
+                 {isHovered && tool === 'brush' && (
+                     <div 
+                        className="absolute bg-transparent rounded-full pointer-events-none border border-dashed border-white/50"
+                        style={{ 
+                            width: brushSize, 
+                            height: brushSize, 
+                            left: mousePosition.x,
+                            top: mousePosition.y,
+                            transform: `translate(-50%, -50%)`,
+                        }}
                      />
                  )}
             </div>

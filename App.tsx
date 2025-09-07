@@ -20,8 +20,8 @@ import type {
     VeoAspectRatio,
 } from './types';
 import * as geminiService from './services/geminiService';
-import { dataURLtoFile, getFileSizeFromBase64, getImageDimensions } from './utils';
-import { API_SUPPORTED_ASPECT_RATIOS, ASPECT_RATIOS } from './constants';
+import { dataURLtoFile, getFileSizeFromBase64, getImageDimensions, createPlaceholderImage } from './utils';
+import { API_SUPPORTED_ASPECT_RATIOS, ASPECT_RATIOS, FUNCTION_BUTTONS } from './constants';
 
 const App: React.FC = () => {
     // --- Core State ---
@@ -38,6 +38,7 @@ const App: React.FC = () => {
 
     // --- Generate Mode State ---
     const [prompt, setPrompt] = useState('');
+    const [inspiredPromptPart, setInspiredPromptPart] = useState('');
     const [referenceImages, setReferenceImages] = useState<UploadedImage[]>([]);
     const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>('1:1');
     const [isOptimizing, setIsOptimizing] = useState(false);
@@ -55,9 +56,8 @@ const App: React.FC = () => {
     const [fillColor, setFillColor] = useState('transparent');
     const [strokeColor, setStrokeColor] = useState('#FFFFFF');
     const [drawAspectRatio, setDrawAspectRatio] = useState<AspectRatio>('1:1');
-    const [canvasBackgroundColor, setCanvasBackgroundColor] = useState('#111827');
+    const [canvasBackgroundColor, setCanvasBackgroundColor] = useState('#808080');
     const [drawBackgroundImage, setDrawBackgroundImage] = useState<string | null>(null);
-    const [isPreviewingBrushSize, setIsPreviewingBrushSize] = useState(false);
 
 
     // --- History Mode State ---
@@ -375,10 +375,44 @@ const App: React.FC = () => {
 
     // --- UI Handlers ---
 
+    const handleAspectRatioSelect = (ratio: AspectRatio) => {
+        // Sync states
+        setSelectedAspectRatio(ratio);
+        setDrawAspectRatio(ratio);
+
+        // Define the outpainting prompt
+        const outpaintingPrompt = FUNCTION_BUTTONS.find(b => b.label === '比例參考圖')?.prompt;
+        if (!outpaintingPrompt) return;
+
+        // Create placeholder image
+        const placeholderSrc = createPlaceholderImage(ratio, '#808080');
+        const placeholderFile = dataURLtoFile(placeholderSrc, `placeholder-${ratio}.png`);
+        const placeholderImage: UploadedImage = { 
+            src: placeholderSrc, 
+            file: placeholderFile, 
+            isPlaceholder: true 
+        };
+
+        // Update reference images: remove old placeholders and add the new one to the front
+        setReferenceImages(prev => {
+            const otherImages = prev.filter(img => !img.isPlaceholder);
+            return [placeholderImage, ...otherImages];
+        });
+
+        // Update prompt: add outpainting prompt only once
+        setPrompt(prev => {
+            if (!prev.includes(outpaintingPrompt)) {
+                return prev ? `${prev.trim()}, ${outpaintingPrompt}` : outpaintingPrompt;
+            }
+            return prev;
+        });
+    };
+
     const onClearSettings = useCallback(() => {
         setPrompt('');
         setReferenceImages([]);
         setSelectedAspectRatio('1:1');
+        setInspiredPromptPart('');
         addToast("設定已清除");
     }, [addToast]);
     
@@ -395,17 +429,26 @@ const App: React.FC = () => {
         setIsOptimizing(true); // Reuse optimizing state for loading indicator
         try {
             const inspired = await geminiService.inspirePrompt();
+            
+            const updater = (currentPrompt: string) => {
+                if (inspiredPromptPart && currentPrompt.includes(inspiredPromptPart)) {
+                    return currentPrompt.replace(inspiredPromptPart, inspired);
+                }
+                return currentPrompt ? `${currentPrompt.trim()}\n\n${inspired}` : inspired;
+            };
+
             if (appMode === 'VEO') {
-                setVeoPrompt(inspired);
+                setVeoPrompt(updater);
             } else {
-                setPrompt(inspired);
+                setPrompt(updater);
+                setInspiredPromptPart(inspired);
             }
         } catch(err) {
             addToast(`靈感獲取失敗: ${err instanceof Error ? err.message : '未知錯誤'}`, 'error');
         } finally {
             setIsOptimizing(false);
         }
-    }, [appMode, addToast]);
+    }, [appMode, addToast, inspiredPromptPart]);
     
     const onUseImage = useCallback((image: GeneratedImage, action: 'reference' | 'remove_bg' | 'draw_bg') => {
         const file = dataURLtoFile(image.src, `used-${image.id}.png`);
@@ -643,7 +686,6 @@ const App: React.FC = () => {
                     backgroundColor={canvasBackgroundColor}
                     aspectRatio={drawAspectRatio}
                     backgroundImage={drawBackgroundImage}
-                    isPreviewingBrushSize={isPreviewingBrushSize}
                 /></main>
             case 'VEO':
                 return <VeoPanel 
@@ -675,7 +717,7 @@ const App: React.FC = () => {
         appMode, setAppMode, onGenerate: handleGenerate, onRemoveBackground: handleRemoveBackground,
         isLoading, uploadedImage, setUploadedImage, referenceImages, setReferenceImages,
         onRemoveReferenceImage: (index: number) => setReferenceImages(imgs => imgs.filter((_, i) => i !== index)),
-        prompt, setPrompt, selectedAspectRatio, onAspectRatioSelect: setSelectedAspectRatio, isOptimizing,
+        prompt, setPrompt, selectedAspectRatio, onAspectRatioSelect: handleAspectRatioSelect, isOptimizing,
         onOptimizePrompt: handleOptimizePrompt, onInspirePrompt, onClearSettings, addGreenScreen, setAddGreenScreen,
         drawTool, setDrawTool, brushSize, onBrushSizeChange: setBrushSize, fillColor, setFillColor, strokeColor, setStrokeColor,
         drawAspectRatio, setDrawAspectRatio, canvasBackgroundColor, setCanvasBackgroundColor,

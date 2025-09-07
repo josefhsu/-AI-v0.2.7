@@ -4,7 +4,6 @@ import { DownloadIcon, TrashIcon, VideoCameraIcon, RegenerateIcon, TextIcon, Res
 import { downloadImage } from '../utils';
 
 type ActionButtonProps = {
-    // Fix: Changed onClick prop to accept a mouse event to allow for event handling like stopPropagation.
     onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
     icon: React.FC<React.SVGProps<SVGSVGElement>>;
     label: string;
@@ -50,10 +49,10 @@ const VeoHistory: React.FC<{
                             <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
                                 <p className="text-xs text-slate-200 max-h-16 overflow-hidden">{item.prompt}</p>
                                 <div className="grid grid-cols-3 gap-1.5">
-                                    <ActionButton onClick={() => downloadImage(item.videoUrl, 'veo-video.mp4')} icon={DownloadIcon} label="下載" small />
-                                    <ActionButton onClick={onRegenerate} icon={RegenerateIcon} label="再生成" small />
-                                    <ActionButton onClick={onUseText} icon={TextIcon} label="使用文字" small />
-                                    <ActionButton onClick={onRestore} icon={RestoreIcon} label="還原設定" small />
+                                    <ActionButton onClick={(e) => { e.stopPropagation(); downloadImage(item.videoUrl, 'veo-video.mp4'); }} icon={DownloadIcon} label="下載" small />
+                                    <ActionButton onClick={(e) => { e.stopPropagation(); onRegenerate(); }} icon={RegenerateIcon} label="再生成" small />
+                                    <ActionButton onClick={(e) => { e.stopPropagation(); onUseText(); }} icon={TextIcon} label="使用文字" small />
+                                    <ActionButton onClick={(e) => { e.stopPropagation(); onRestore(); }} icon={RestoreIcon} label="還原設定" small />
                                     <ActionButton onClick={(e) => { e.stopPropagation(); onDelete(item.id); }} icon={TrashIcon} label="刪除" small />
                                 </div>
                             </div>

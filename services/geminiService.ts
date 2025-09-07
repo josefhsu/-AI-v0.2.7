@@ -168,8 +168,8 @@ export const analyzeImage = async (file: File): Promise<{ score: string; analysi
         model: GENERAL_MODEL,
         contents: {
             parts: [
-                { inlineData: { data: base64Data, mimeType } },
-                { text: 'Analyze the aesthetics of this image. Provide a score out of 100 and a brief, constructive analysis of its composition, lighting, color, and subject matter.' },
+                { inlineData: { data: base64Data, mimeType: mimeType } },
+                { text: '對這張圖片進行美感分析。提供一個滿分100分的分數，並對其構圖、光影、色彩和主題進行簡潔且具建設性的分析。請用繁體中文回答。' },
             ]
         },
         config: {
@@ -177,8 +177,8 @@ export const analyzeImage = async (file: File): Promise<{ score: string; analysi
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    score: { type: Type.STRING },
-                    analysis: { type: Type.STRING }
+                    score: { type: Type.STRING, description: '美感分數（0-100）' },
+                    analysis: { type: Type.STRING, description: '繁體中文的美感分析文字' }
                 }
             }
         }
@@ -198,7 +198,7 @@ export const enhanceWebcamImage = async (base64Data: string, mimeType: string): 
         model: IMAGE_EDIT_MODEL,
         contents: {
             parts: [
-                { inlineData: { data: base64Data, mimeType } },
+                { inlineData: { data: base64Data, mimeType: mimeType } },
                 { text: 'Enhance this webcam photo to improve lighting, clarity, and overall quality, making it look more professional.' },
             ],
         },
@@ -256,11 +256,11 @@ export const describeImageForVideo = async (file: File): Promise<string> => {
         contents: {
             parts: [
                 { inlineData: { data: base64Data, mimeType: file.type } },
-                { text: `扮演一位專業的電影導演，為 Veo 2 AI 影片模型分析這張圖片。嚴格按照以下12個維度輸出專業級提示詞，主動加入「角色動作運動」和「鏡頭運動」，把這張靜態圖片變成一個動態的開場腳本：[主體描述]，在[場景背景]中，[動作與姿態]，[表情情緒]，穿著[服飾與配件]，周圍環繞著[環境細節與物件]，使用[藝術風格]，[光影效果]，[構圖與視角]，整體呈現[色調與質感]、[角色動作運動]、[鏡頭運動]。不要包含長寬比資訊。` }
+                { text: `為 Veo 2 AI 影片模型分析這張圖片，並為其設計一個開場腳本的專業級提示詞。你的回答必須只包含該提示詞，禁止加入任何如「好的，作為一位專業電影導演...」之類的前導文字或引號。腳本應包含：[主體描述]，在[場景背景]中，[動作與姿態]，[表情情緒]，穿著[服飾與配件]，周圍環繞著[環境細節與物件]，使用[藝術風格]，[光影效果]，[構圖與視角]，整體呈現[色調與質感]、[角色動作運動]、[鏡頭運動]。` }
             ]
         }
     });
-    return response.text.trim();
+    return response.text.trim().replace(/^"|"$/g, '');
 };
 
 export const createDirectorScript = async (startFile: File, endFile: File): Promise<string> => {
@@ -271,7 +271,7 @@ export const createDirectorScript = async (startFile: File, endFile: File): Prom
         model: GENERAL_MODEL,
         contents: {
             parts: [
-                { text: "你是專為 Veo 2 設計的電影導演。你的任務是根據「開頭場景」和「結尾場景」這兩張參考圖，構思一個從開頭自然蛻變到結尾的連續鏡頭故事。你的首要規則是：影片的最後一幀畫面，必須完全變成『結尾場景』的樣子。在這個前提下，再去構思如何從『開頭場景』自然地演變過去。請輸出一段專業的導演級腳本描述這個過程，包含鏡頭運動和角色動態。" },
+                { text: "根據「開頭場景」和「結尾場景」這兩張參考圖，構思一個從開頭自然蛻變到結尾的連續鏡頭故事腳本。影片的最後一幀畫面必須完全變成『結尾場景』的樣子。你的回答必須只包含該專業的導演級腳本，禁止加入任何前導文字或引號。腳本應描述這個過程，包含鏡頭運動和角色動態。" },
                 { text: "開頭場景：" },
                 { inlineData: { data: startBase64, mimeType: startFile.type } },
                 { text: "結尾場景：" },
@@ -279,7 +279,7 @@ export const createDirectorScript = async (startFile: File, endFile: File): Prom
             ]
         }
     });
-    return response.text.trim();
+    return response.text.trim().replace(/^"|"$/g, '');
 };
 
 export const generateVeoVideo = async (params: VeoParams, addToast: (message: string, type?: Toast['type']) => void): Promise<VeoHistoryItem> => {
@@ -295,7 +295,7 @@ export const generateVeoVideo = async (params: VeoParams, addToast: (message: st
         };
     }
 
-    const finalPrompt = `${params.prompt}\n\n重點：影片的最後一幀畫面，必須完全符合『結尾場景』。`;
+    const finalPrompt = `${params.prompt}${params.endFrame ? `\n\n重點：影片的最後一幀畫面，必須完全符合『結尾場景』。` : ''}`;
 
     const imageForApi = compositeImage || params.startFrame;
 
@@ -308,7 +308,7 @@ export const generateVeoVideo = async (params: VeoParams, addToast: (message: st
         } : undefined,
         config: {
             numberOfVideos: 1,
-            // Fix: Removed unsupported `aspectRatio` property from the generateVideos config.
+            aspectRatio: params.aspectRatio as any,
         }
     });
     
@@ -317,7 +317,7 @@ export const generateVeoVideo = async (params: VeoParams, addToast: (message: st
     while (!operation.done) {
         await new Promise(resolve => setTimeout(resolve, 10000)); // Poll every 10 seconds
         operation = await ai.operations.getVideosOperation({ operation: operation });
-        // Fix: The progressPercentage can be of type 'unknown' from the SDK. Cast it to a number before use.
+        // The progressPercentage can be of type 'unknown' from the SDK. Cast it to a number before use.
         const progress = Number((operation.metadata as any)?.progressPercentage) || 0;
         addToast(`影片生成進度: ${Math.round(progress)}%`, 'info');
     }

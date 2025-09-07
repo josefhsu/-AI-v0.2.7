@@ -370,7 +370,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                     </div>
                 </Accordion>
 
-                <Accordion title="包娜娜終極改圖指南">
+                <Accordion title="終極改圖指南">
                     <div className="max-h-48 overflow-y-auto pr-1">
                         {EDITING_EXAMPLES.map(cat => (
                         <div key={cat.category}>

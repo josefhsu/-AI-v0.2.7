@@ -1,747 +1,645 @@
 
-
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { ResultPanel } from './components/ResultPanel';
-import { Lightbox } from './components/Lightbox';
 import { HistoryPanel } from './components/HistoryPanel';
+import { Lightbox } from './components/Lightbox';
 import { DrawingCanvas } from './components/DrawingCanvas';
 import { VeoPanel } from './components/VeoPanel';
-import {
-    generateImagesWithGemini,
-    optimizePromptWithGemini,
-    removeBackground,
-    upscaleImageWithGemini,
-    analyzeImageAesthetics,
-    getInspiration,
-    fileToGenerativePart,
-    describeImageForVeo,
-    createDirectorScript,
-    generateVeoVideo,
-} from './services/geminiService';
 import type {
     AppMode,
+    AspectRatio,
     GeneratedImage,
-    UploadedImage,
     HistoryItem,
     LightboxConfig,
     Toast,
+    UploadedImage,
     DrawTool,
-    AspectRatio,
     DrawingCanvasRef,
-    VeoAspectRatio,
+    VeoParams,
     VeoHistoryItem,
-    VeoParams
+    VeoAspectRatio,
 } from './types';
-import { ASPECT_RATIOS } from './constants';
-// FIX: Add missing import for fileToBase64 from utils.ts
-import { dataURLtoFile, getFileSizeFromBase64, getImageDimensions, getMimeTypeFromDataUrl, createCompositeImage, generateVideoThumbnail, fileToBase64 } from './utils';
-// FIX: Removed incorrect import for MenuIcon. It is defined locally within this component.
+import * as geminiService from './services/geminiService';
+import { dataURLtoFile, getFileSizeFromBase64, getImageDimensions } from './utils';
+import { API_SUPPORTED_ASPECT_RATIOS, ASPECT_RATIOS } from './constants';
 
-// --- Helper Hook for localStorage ---
-function useLocalStorage<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-    const [storedValue, setStoredValue] = useState<T>(() => {
-        if (typeof window === "undefined") return initialValue;
-        try {
-            const item = window.localStorage.getItem(key);
-            return item ? JSON.parse(item) : initialValue;
-        } catch (error) {
-            console.error(error);
-            return initialValue;
-        }
-    });
-
-    const setValue: React.Dispatch<React.SetStateAction<T>> = useCallback((value) => {
-        try {
-            const valueToStore = value instanceof Function ? value(storedValue) : value;
-            setStoredValue(valueToStore);
-            if (typeof window !== "undefined") {
-                window.localStorage.setItem(key, JSON.stringify(valueToStore));
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    }, [key, storedValue]);
-
-    return [storedValue, setValue];
-}
-
-// --- Toast Notification Component ---
-const ToastNotification: React.FC<{ toast: Toast; onDismiss: () => void }> = ({ toast, onDismiss }) => {
-    useEffect(() => {
-        const timer = setTimeout(onDismiss, 3000);
-        return () => clearTimeout(timer);
-    }, [onDismiss]);
-
-    const typeClasses = {
-        success: "bg-green-600/90",
-        error: "bg-red-600/90",
-        info: "bg-blue-600/90"
-    };
-
-    return (
-        <div className={`px-4 py-2 rounded-lg shadow-lg text-white font-semibold text-sm backdrop-blur-sm ${typeClasses[toast.type]}`}>
-            {toast.message}
-        </div>
-    );
-};
-
-const MenuIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-    </svg>
-);
-
-
-function App() {
-    // --- State Management ---
+const App: React.FC = () => {
+    // --- Core State ---
     const [appMode, setAppMode] = useState<AppMode>('GENERATE');
     const [isLoading, setIsLoading] = useState(false);
-    const [isOptimizing, setIsOptimizing] = useState(false);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [images, setImages] = useState<GeneratedImage[]>([]);
+    const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [modifierKey, setModifierKey] = useState<'Ctrl' | '⌘'>('Ctrl');
+
+    // --- Toast State ---
     const [toasts, setToasts] = useState<Toast[]>([]);
+
+    // --- Generate Mode State ---
     const [prompt, setPrompt] = useState('');
-    const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
-    const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>('1:1');
-    const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null);
     const [referenceImages, setReferenceImages] = useState<UploadedImage[]>([]);
+    const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatio>('1:1');
+    const [isOptimizing, setIsOptimizing] = useState(false);
+
+    // --- Remove BG Mode State ---
+    const [uploadedImage, setUploadedImage] = useState<UploadedImage | null>(null);
     const [addGreenScreen, setAddGreenScreen] = useState(false);
-    const [history, setHistory] = useLocalStorage<HistoryItem[]>('image-gen-history', []);
-    const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
-    const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+    // --- Draw Mode State ---
+    const drawCanvasRef = useRef<DrawingCanvasRef>(null);
     const [drawTool, setDrawTool] = useState<DrawTool>('brush');
     const [brushSize, setBrushSize] = useState(10);
-    const [fillColor, setFillColor] = useState<string>('transparent');
-    const [strokeColor, setStrokeColor] = useState<string>('#FFFFFF');
-    const [canvasBackgroundColor, setCanvasBackgroundColor] = useState<string>('#111827');
+    const [fillColor, setFillColor] = useState('transparent');
+    const [strokeColor, setStrokeColor] = useState('#FFFFFF');
     const [drawAspectRatio, setDrawAspectRatio] = useState<AspectRatio>('1:1');
+    const [canvasBackgroundColor, setCanvasBackgroundColor] = useState('#111827');
     const [drawBackgroundImage, setDrawBackgroundImage] = useState<string | null>(null);
-    const [lightboxConfig, setLightboxConfig] = useState<LightboxConfig>(null);
-    const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
-    const [isMobile, setIsMobile] = useState(false);
-    const modifierKey = useRef<'Ctrl' | '⌘'>('Ctrl');
-    const drawCanvasRef = useRef<DrawingCanvasRef>(null);
     const [isPreviewingBrushSize, setIsPreviewingBrushSize] = useState(false);
 
-    // --- Veo State ---
+
+    // --- History Mode State ---
+    const [history, setHistory] = useState<HistoryItem[]>([]);
+    const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+    // --- VEO Mode State ---
     const [veoPrompt, setVeoPrompt] = useState('');
     const [startFrame, setStartFrame] = useState<UploadedImage | null>(null);
     const [endFrame, setEndFrame] = useState<UploadedImage | null>(null);
     const [veoAspectRatio, setVeoAspectRatio] = useState<VeoAspectRatio>('16:9');
-    const [videoDuration, setVideoDuration] = useState(8);
+    const [videoDuration, setVideoDuration] = useState(5);
     const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
-    const [videoGenerationStatus, setVideoGenerationStatus] = useState('');
-    const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
     const [veoHistory, setVeoHistory] = useState<VeoHistoryItem[]>([]);
-    const [lastSuccessfulVeoParams, setLastSuccessfulVeoParams] = useState<VeoParams | null>(null);
+    const [currentVeoVideo, setCurrentVeoVideo] = useState<VeoHistoryItem | null>(null);
+    const [lastVeoSuccessParams, setLastVeoSuccessParams] = useState<VeoParams | null>(null);
+    const [isAnalyzingFrames, setIsAnalyzingFrames] = useState(false);
 
 
-    // --- Helper Functions ---
-    const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
-        const id = Date.now().toString();
-        setToasts(prev => [...prev, { id, message, type }]);
-    }, []);
+    // --- Lightbox State ---
+    const [lightboxConfig, setLightboxConfig] = useState<LightboxConfig>(null);
 
-    const processGeneratedImages = useCallback(async (base64Images: string[], generationPrompt: string): Promise<GeneratedImage[]> => {
-        const newImages: GeneratedImage[] = [];
-        for (const base64 of base64Images) {
-            const src = `data:image/png;base64,${base64}`;
-            const size = getFileSizeFromBase64(src);
-            const { width, height } = await getImageDimensions(src);
-            newImages.push({
-                id: `img-${Date.now()}-${Math.random()}`,
-                src,
-                alt: generationPrompt,
-                prompt: generationPrompt,
-                width,
-                height,
-                size,
-                analysis: null,
-            });
+    // --- Effects ---
+
+    // Load history from localStorage on mount
+    useEffect(() => {
+        try {
+            const savedHistory = localStorage.getItem('image-gen-history');
+            if (savedHistory) {
+                setHistory(JSON.parse(savedHistory));
+            }
+        } catch (e) {
+            console.error("Failed to load history from localStorage", e);
         }
-        return newImages;
+        
+        // Detect OS for modifier key
+        if (navigator.userAgent.indexOf("Mac") !== -1) {
+            setModifierKey("⌘");
+        }
+
+        // Handle responsive design
+        const handleResize = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    const addToHistory = useCallback((items: GeneratedImage[]) => {
-        setHistory(prev => [...items, ...prev].slice(0, 100)); // Keep history to 100 items
-    }, [setHistory]);
+    // Save history to localStorage when it changes
+    useEffect(() => {
+        try {
+            localStorage.setItem('image-gen-history', JSON.stringify(history));
+        } catch (e) {
+            console.error("Failed to save history to localStorage", e);
+            // Don't save VEO history to avoid storage limits
+        }
+    }, [history]);
 
-    // --- Handlers ---
-    const handleGenerate = useCallback(async (currentPrompt: string, currentRefImages: UploadedImage[], currentAspectRatio: AspectRatio) => {
-        if (!currentPrompt.trim() && currentRefImages.length === 0) {
-            setError("請輸入提示詞或上傳參考圖。");
+
+    // --- Utility Functions ---
+    const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
+        const id = crypto.randomUUID();
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+            setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
+        }, 3000);
+    }, []);
+    
+    const addToHistory = useCallback(async (newImages: Omit<GeneratedImage, 'width' | 'height' | 'size'>[]) => {
+        const newHistoryItems: HistoryItem[] = [];
+        for(const image of newImages) {
+            try {
+                const { width, height } = await getImageDimensions(image.src);
+                const size = getFileSizeFromBase64(image.src);
+                newHistoryItems.push({ ...image, width, height, size, analysis: null });
+            } catch (err) {
+                 console.error("Could not get image metadata", err);
+                 newHistoryItems.push({ ...image, analysis: null });
+            }
+        }
+        setHistory(prev => [...newHistoryItems, ...prev].slice(0, 50)); // Limit history size
+    }, []);
+
+    // --- API Handlers ---
+
+    const handleGenerate = useCallback(async () => {
+        if (!prompt.trim()) {
+            addToast("請輸入提示詞", "error");
             return;
         }
         setIsLoading(true);
         setError(null);
-        setGeneratedImages([]);
+        setImages([]);
+        if (appMode !== 'GENERATE' && appMode !== 'CHARACTER_CREATOR') setAppMode('GENERATE');
 
         try {
-            const imageParts = await Promise.all(currentRefImages.map(img => fileToGenerativePart(img.file)));
-            const resultBase64s = await generateImagesWithGemini(currentPrompt, imageParts, currentAspectRatio);
-            const newImages = await processGeneratedImages(resultBase64s, currentPrompt);
-            setGeneratedImages(newImages);
-            addToHistory(newImages);
+            let aspectRatioToUse = selectedAspectRatio;
+            if (!API_SUPPORTED_ASPECT_RATIOS.includes(selectedAspectRatio)) {
+                addToast(`長寬比 ${selectedAspectRatio} 不支援，將使用 1:1`, 'info');
+                aspectRatioToUse = '1:1';
+            }
+            const result = await geminiService.generateImages(prompt, aspectRatioToUse, referenceImages);
+            setImages(result);
+            addToHistory(result);
         } catch (err) {
-            console.error("Generation failed:", err);
-            const message = err instanceof Error ? err.message : "發生未知錯誤";
-            setError(`生成失敗: ${message}`);
+            const message = err instanceof Error ? err.message : '發生未知錯誤';
+            setError(message);
             addToast(`生成失敗: ${message}`, 'error');
         } finally {
             setIsLoading(false);
         }
-    }, [processGeneratedImages, addToHistory, addToast]);
+    }, [prompt, selectedAspectRatio, referenceImages, appMode, addToast, addToHistory]);
 
-    const handleCurrentStateGenerate = useCallback(() => {
-        handleGenerate(prompt, referenceImages, selectedAspectRatio);
-    }, [handleGenerate, prompt, referenceImages, selectedAspectRatio]);
-    
     const handleRemoveBackground = useCallback(async () => {
         if (!uploadedImage) {
-            setError("請先上傳圖片。");
+            addToast("請先上傳圖片", "error");
             return;
         }
         setIsLoading(true);
         setError(null);
-        setGeneratedImages([]);
-        
+        setImages([]);
+
         try {
-            const base64 = (await fileToBase64(uploadedImage.file));
-            const { image, text } = await removeBackground(base64, uploadedImage.file.type, addGreenScreen);
-            
-            if (image) {
-                const generationPrompt = `Removed background from original image. ${addGreenScreen ? 'Added green screen.' : ''} ${text || ''}`.trim();
-                const newImages = await processGeneratedImages([image], generationPrompt);
-                setGeneratedImages(newImages);
-                addToHistory(newImages);
-                addToast('背景移除成功！', 'success');
-            } else {
-                 throw new Error(text || "模型未返回圖片。");
-            }
+            const resultBase64 = await geminiService.removeBackground(uploadedImage.file, addGreenScreen);
+            const resultSrc = `data:image/png;base64,${resultBase64}`;
+            const newImage: Omit<GeneratedImage, 'width'|'height'|'size'> = {
+                id: crypto.randomUUID(),
+                src: resultSrc,
+                alt: `${uploadedImage.file.name} - background removed`,
+                prompt: `Remove background from original image, green screen: ${addGreenScreen}`
+            };
+            setImages([newImage]);
+            addToHistory([newImage]);
         } catch (err) {
-            console.error("Background removal failed:", err);
-            const message = err instanceof Error ? err.message : "發生未知錯誤";
-            setError(`移除背景失敗: ${message}`);
-            addToast(`移除背景失敗: ${message}`, 'error');
+            const message = err instanceof Error ? err.message : '發生未知錯誤';
+            setError(message);
+            addToast(`去背失敗: ${message}`, 'error');
         } finally {
             setIsLoading(false);
         }
-    }, [uploadedImage, addGreenScreen, processGeneratedImages, addToHistory, addToast]);
+    }, [uploadedImage, addGreenScreen, addToast, addToHistory]);
 
     const handleOptimizePrompt = useCallback(async () => {
         const currentPrompt = appMode === 'VEO' ? veoPrompt : prompt;
-        const setThePrompt = appMode === 'VEO' ? setVeoPrompt : setPrompt;
-
         if (!currentPrompt.trim()) {
-            addToast('請先輸入提示詞', 'info');
+            addToast("請先輸入要優化的提示詞", "error");
             return;
         }
         setIsOptimizing(true);
         try {
-            const optimized = await optimizePromptWithGemini(currentPrompt);
-            setThePrompt(optimized);
-            addToast('提示詞優化成功！', 'success');
+            const optimized = await geminiService.optimizePrompt(currentPrompt);
+            if (appMode === 'VEO') {
+                setVeoPrompt(optimized);
+            } else {
+                setPrompt(optimized);
+            }
+            addToast("提示詞已優化", "success");
         } catch (err) {
-            console.error("Prompt optimization failed:", err);
-            addToast('提示詞優化失敗', 'error');
+            addToast(`優化失敗: ${err instanceof Error ? err.message : '未知錯誤'}`, 'error');
         } finally {
             setIsOptimizing(false);
         }
     }, [prompt, veoPrompt, appMode, addToast]);
-    
-    const handleInspirePrompt = useCallback(async () => {
-        setIsOptimizing(true); // Share loading state
-        const setThePrompt = appMode === 'VEO' ? setVeoPrompt : setPrompt;
+
+    // --- VEO Handlers ---
+    const handleGenerateVeo = useCallback(async (paramsOverride?: VeoParams) => {
+        const paramsToUse = paramsOverride || { prompt: veoPrompt, startFrame, endFrame, aspectRatio: veoAspectRatio, duration: videoDuration };
+        
+        if (!paramsToUse.prompt.trim()) {
+            addToast("請輸入影片提示詞", "error");
+            return;
+        }
+        setIsGeneratingVideo(true);
+        setError(null);
+        
         try {
-            const inspiration = await getInspiration();
-            setThePrompt(prev => prev.trim() ? `${prev.trim()}, ${inspiration}` : inspiration);
+            const result = await geminiService.generateVeoVideo(paramsToUse, addToast);
+            const newHistory = [result, ...veoHistory];
+            setVeoHistory(newHistory);
+            setCurrentVeoVideo(result);
+            setLastVeoSuccessParams(paramsToUse);
+            addToast("影片生成成功！", "success");
+        } catch (err) {
+            const message = err instanceof Error ? err.message : '發生未知錯誤';
+            setError(message);
+            addToast(`影片生成失敗: ${message}`, 'error');
+        } finally {
+            setIsGeneratingVideo(false);
+        }
+    }, [veoPrompt, startFrame, endFrame, veoAspectRatio, videoDuration, addToast, veoHistory]);
+
+    const handleVeoImageChange = useCallback(async (
+        newStartFrame: UploadedImage | null,
+        newEndFrame: UploadedImage | null
+    ) => {
+        if (!newStartFrame && !newEndFrame) return;
+
+        setIsAnalyzingFrames(true);
+        addToast("AI導演分析中...", "info");
+        try {
+            let directorPrompt = '';
+            if (newStartFrame && newEndFrame) {
+                directorPrompt = await geminiService.createDirectorScript(newStartFrame.file, newEndFrame.file);
+            } else if (newStartFrame || newEndFrame) {
+                const imageFile = (newStartFrame || newEndFrame)!.file;
+                directorPrompt = await geminiService.describeImageForVideo(imageFile);
+            }
+            setVeoPrompt(directorPrompt);
+            addToast("提示詞已自動生成！", "success");
+        } catch (err) {
+            addToast(`AI導演分析失敗: ${err instanceof Error ? err.message : '未知錯誤'}`, 'error');
+        } finally {
+            setIsAnalyzingFrames(false);
+        }
+    }, [addToast]);
+
+    const handleStartFrameChange = (image: UploadedImage | null) => {
+        setStartFrame(image);
+        handleVeoImageChange(image, endFrame);
+    };
+
+    const handleEndFrameChange = (image: UploadedImage | null) => {
+        setEndFrame(image);
+        handleVeoImageChange(startFrame, image);
+    };
+
+    const handleVeoRegenerate = useCallback(() => {
+        const paramsToRegen = currentVeoVideo || lastVeoSuccessParams;
+        if (paramsToRegen) {
+            handleGenerateVeo(paramsToRegen);
+        } else {
+            addToast("沒有可再生成的設定", "info");
+        }
+    }, [currentVeoVideo, lastVeoSuccessParams, handleGenerateVeo, addToast]);
+
+    const handleVeoUseText = useCallback(() => {
+        if (currentVeoVideo) {
+            setVeoPrompt(currentVeoVideo.prompt);
+            setStartFrame(null);
+            setEndFrame(null);
+            addToast("已使用影片文字並清除圖片", "success");
+            setCurrentVeoVideo(null); // Clear video to reflect change
+        } else {
+             addToast("沒有可使用的文字", "info");
+        }
+    }, [currentVeoVideo, addToast]);
+
+    const handleVeoRestore = useCallback(() => {
+        const paramsToRestore = currentVeoVideo || lastVeoSuccessParams;
+        if (paramsToRestore) {
+            setVeoPrompt(paramsToRestore.prompt);
+            setStartFrame(paramsToRestore.startFrame);
+            setEndFrame(paramsToRestore.endFrame);
+            setVeoAspectRatio(paramsToRestore.aspectRatio);
+            setVideoDuration(paramsToRestore.duration);
+            addToast("已還原設定", "success");
+        } else {
+            addToast("沒有可還原的設定", "info");
+        }
+    }, [currentVeoVideo, lastVeoSuccessParams, addToast]);
+
+    const handleVeoDelete = (id: string) => {
+        if (currentVeoVideo?.id === id) {
+            const currentIndex = veoHistory.findIndex(item => item.id === id);
+            if (veoHistory.length > 1) {
+                const nextIndex = currentIndex > 0 ? currentIndex - 1 : 0;
+                setCurrentVeoVideo(veoHistory[nextIndex] || null);
+            } else {
+                 setCurrentVeoVideo(null);
+            }
+        }
+        setVeoHistory(h => h.filter(item => item.id !== id));
+    };
+
+    // --- UI Handlers ---
+
+    const onClearSettings = useCallback(() => {
+        setPrompt('');
+        setReferenceImages([]);
+        setSelectedAspectRatio('1:1');
+        addToast("設定已清除");
+    }, [addToast]);
+    
+    const onInspirePrompt = useCallback(async () => {
+        setIsOptimizing(true); // Reuse optimizing state for loading indicator
+        try {
+            const inspired = await geminiService.inspirePrompt();
+            if (appMode === 'VEO') {
+                setVeoPrompt(inspired);
+            } else {
+                setPrompt(inspired);
+            }
         } catch(err) {
-            console.error("Inspire failed:", err);
-            addToast('獲取靈感失敗', 'error');
+            addToast(`靈感獲取失敗: ${err instanceof Error ? err.message : '未知錯誤'}`, 'error');
         } finally {
             setIsOptimizing(false);
         }
     }, [appMode, addToast]);
     
-    const handleClearSettings = useCallback(() => {
-        setPrompt('');
-        setReferenceImages([]);
-        setUploadedImage(null);
-        setSelectedAspectRatio('1:1');
-        setVeoPrompt('');
-        setStartFrame(null);
-        setEndFrame(null);
-        setVeoAspectRatio('16:9');
-        setVideoDuration(8);
-        addToast('設定已清除', 'info');
-    }, [addToast]);
+    const onUseImage = useCallback((image: GeneratedImage, action: 'reference' | 'remove_bg' | 'draw_bg') => {
+        const file = dataURLtoFile(image.src, `used-${image.id}.png`);
+        const uploaded: UploadedImage = { src: image.src, file };
 
-    const handleUpscale = useCallback(async (src: string) => {
+        switch(action) {
+            case 'reference':
+                setReferenceImages(prev => [...prev, uploaded].slice(0, 8));
+                setAppMode('GENERATE');
+                addToast("圖片已添加至參考圖", "success");
+                break;
+            case 'remove_bg':
+                setUploadedImage(uploaded);
+                setAppMode('REMOVE_BG');
+                break;
+            case 'draw_bg':
+                setDrawBackgroundImage(image.src);
+                setAppMode('DRAW');
+                addToast("圖片已設為畫布背景", "success");
+                break;
+        }
+        setLightboxConfig(null);
+    }, [addToast]);
+    
+    const onUseHistoryImage = useCallback((src: string, targetMode: AppMode) => {
+        const file = dataURLtoFile(src, `history-img.png`);
+        const uploaded: UploadedImage = { src, file };
+
+        if (targetMode === 'REMOVE_BG') {
+            setUploadedImage(uploaded);
+            setAppMode('REMOVE_BG');
+        } else if (targetMode === 'DRAW') {
+            setDrawBackgroundImage(src);
+            setAppMode('DRAW');
+        }
+    }, []);
+
+    const onUpscale = useCallback(async (src: string) => {
         setIsLoading(true);
         setError(null);
+        setImages([]);
+        setAppMode('GENERATE');
+        setLightboxConfig(null);
+
         try {
-            const base64 = src.split(',')[1];
-            const mimeType = getMimeTypeFromDataUrl(src);
-            const upscaledBase64 = await upscaleImageWithGemini(base64, mimeType);
-            const newImages = await processGeneratedImages([upscaledBase64], `Upscaled image.`);
-            setGeneratedImages(newImages);
-            addToHistory(newImages);
-            addToast('畫質提升成功！', 'success');
+            const file = dataURLtoFile(src, 'upscale.png');
+            const resultBase64 = await geminiService.upscaleImage(file);
+            const resultSrc = `data:image/png;base64,${resultBase64}`;
+            const newImage: Omit<GeneratedImage, 'width'|'height'|'size'> = {
+                id: crypto.randomUUID(),
+                src: resultSrc,
+                alt: 'Upscaled image',
+                prompt: 'Upscaled image'
+            };
+            setImages([newImage]);
+            addToHistory([newImage]);
+            addToast("圖片畫質已提升", "success");
         } catch (err) {
-            console.error("Upscale failed:", err);
-            const message = err instanceof Error ? err.message : "發生未知錯誤";
-            setError(`提升畫質失敗: ${message}`);
+            const message = err instanceof Error ? err.message : '發生未知錯誤';
+            setError(message);
             addToast(`提升畫質失敗: ${message}`, 'error');
         } finally {
             setIsLoading(false);
-            setLightboxConfig(null);
         }
-    }, [processGeneratedImages, addToHistory, addToast]);
-    
-    const handleZoomOut = useCallback(async (item: GeneratedImage) => {
+    }, [addToast, addToHistory]);
+
+    const onZoomOut = useCallback(async (item: GeneratedImage) => {
         setIsLoading(true);
         setError(null);
+        setImages([]);
+        setAppMode('GENERATE');
         setLightboxConfig(null);
+
         try {
-            const file = dataURLtoFile(item.src, 'zoom-out-source.png');
-            const imagePart = await fileToGenerativePart(file);
-            const zoomPrompt = 'Zoom out 2x from this image. Expand the scene naturally while keeping the original content centered and perfectly preserved.';
-            const resultBase64s = await generateImagesWithGemini(zoomPrompt, [imagePart], '1:1'); // Zoom out is best with 1:1
-            const newImages = await processGeneratedImages(resultBase64s, `Zoom out of: ${item.alt}`);
-            setGeneratedImages(newImages);
-            addToHistory(newImages);
-            addToast('Zoom Out 成功!', 'success');
+            const file = dataURLtoFile(item.src, 'zoomout.png');
+            const resultBase64 = await geminiService.zoomOutImage(file);
+            const resultSrc = `data:image/png;base64,${resultBase64}`;
+            const newImage: Omit<GeneratedImage, 'width'|'height'|'size'> = {
+                id: crypto.randomUUID(),
+                src: resultSrc,
+                alt: 'Zoomed out image',
+                prompt: item.prompt
+            };
+            setImages([newImage]);
+            addToHistory([newImage]);
+            addToast("圖片已擴圖", "success");
         } catch (err) {
-            console.error("Zoom out failed:", err);
-            const message = err instanceof Error ? err.message : "發生未知錯誤";
-            setError(`Zoom out 失敗: ${message}`);
-            addToast(`Zoom out 失敗: ${message}`, 'error');
+            const message = err instanceof Error ? err.message : '發生未知錯誤';
+            setError(message);
+            addToast(`擴圖失敗: ${message}`, 'error');
         } finally {
             setIsLoading(false);
         }
-    }, [processGeneratedImages, addToHistory, addToast]);
-    
-    const handleUseImage = useCallback(async (image: GeneratedImage, action: 'reference' | 'remove_bg' | 'draw_bg') => {
-        addToast('影像已載入', 'success');
-        setLightboxConfig(null);
-        const file = dataURLtoFile(image.src, 'used-image.png');
-        const uploaded: UploadedImage = { src: image.src, file };
+    }, [addToast, addToHistory]);
 
-        if (action === 'reference') {
-            setReferenceImages(prev => [...prev, uploaded].slice(0, 8));
-            setAppMode('GENERATE');
-        } else if (action === 'remove_bg') {
-            setUploadedImage(uploaded);
-            setAppMode('REMOVE_BG');
-        } else if (action === 'draw_bg') {
-            setDrawBackgroundImage(image.src);
-            setAppMode('DRAW');
-        }
+    const handlePromptSelect = (p: string) => {
+        setPrompt(p);
+        setAppMode('GENERATE');
+    };
+    
+    const handleUseDrawing = useCallback(async () => {
+        if (!drawCanvasRef.current) return;
+        const dataUrl = drawCanvasRef.current.exportImage();
+        const file = dataURLtoFile(dataUrl, 'drawing.png');
+        setReferenceImages([{ src: dataUrl, file }]);
+        setAppMode('GENERATE');
+        addToast("畫布已作為參考圖", "success");
     }, [addToast]);
 
-    const handleSelectItemForAnalysis = useCallback(async (item: HistoryItem) => {
+    const handleHistorySelect = useCallback(async (item: HistoryItem) => {
         setSelectedHistoryItem(item);
-        if (item.analysis) return; // Already analyzed
+        if (item.analysis) return; // Don't re-analyze
 
         setIsAnalyzing(true);
         setAnalysisError(null);
         try {
-            const file = dataURLtoFile(item.src, 'history-item.png');
-            const imagePart = await fileToGenerativePart(file);
-            const analysisResult = await analyzeImageAesthetics(imagePart);
-            
-            const updatedItem = { ...item, analysis: analysisResult };
-            setHistory(prev => prev.map(h => h.id === item.id ? updatedItem : h));
-            setSelectedHistoryItem(updatedItem);
+            const analysisResult = await geminiService.analyzeImage(dataURLtoFile(item.src, 'analysis.png'));
+            const updatedHistory = history.map(h => h.id === item.id ? { ...h, analysis: analysisResult } : h);
+            setHistory(updatedHistory);
+            setSelectedHistoryItem(prev => prev ? { ...prev, analysis: analysisResult } : null);
         } catch (err) {
-            console.error("Analysis failed:", err);
-            const message = err instanceof Error ? err.message : "發生未知錯誤";
-            setAnalysisError(`分析失敗: ${message}`);
+            setAnalysisError(err instanceof Error ? err.message : '分析失敗');
         } finally {
             setIsAnalyzing(false);
         }
-    }, [setHistory]);
-
-    const handleUseDrawing = useCallback(async () => {
-        const dataUrl = drawCanvasRef.current?.exportImage();
-        if (dataUrl) {
-            const file = dataURLtoFile(dataUrl, 'drawing.png');
-            setReferenceImages(prev => [...prev, { src: dataUrl, file }].slice(0, 8));
-            setAppMode('GENERATE');
-            addToast('畫布已作為參考圖', 'success');
-        }
-    }, [addToast]);
+    }, [history]);
     
-    // --- VEO Handlers ---
-    const handleGenerateVeo = useCallback(async () => {
-        if (!veoPrompt && !startFrame && !endFrame) {
-            addToast('請提供提示詞或首尾幀圖片', 'error');
-            return;
-        }
-        setIsGeneratingVideo(true);
-        setGeneratedVideoUrl(null);
-        
-        const currentParams: VeoParams = { prompt: veoPrompt, startFrame, endFrame, aspectRatio: veoAspectRatio, duration: videoDuration };
-
-        try {
-            let finalPrompt = veoPrompt;
-            let compositeImage: { imageBytes: string; mimeType: string } | undefined;
-            
-            // AI Director Workflow
-            if (startFrame && endFrame) {
-                setVideoGenerationStatus("正在分析首幀...");
-                const startPart = await fileToGenerativePart(startFrame.file);
-                const startDesc = await describeImageForVeo(startPart);
-
-                setVideoGenerationStatus("正在分析尾幀...");
-                const endPart = await fileToGenerativePart(endFrame.file);
-                const endDesc = await describeImageForVeo(endPart);
-
-                setVideoGenerationStatus("AI導演正在構思轉場劇本...");
-                const directorScript = await createDirectorScript(veoPrompt, startDesc, endDesc);
-
-                setVideoGenerationStatus("正在合併參考圖...");
-                const { dataUrl: compositeDataUrl } = await createCompositeImage(startFrame.src, endFrame.src);
-                compositeImage = {
-                    imageBytes: compositeDataUrl.split(',')[1],
-                    mimeType: 'image/png'
-                };
-                
-                finalPrompt = `使用者核心提示: ${veoPrompt}\n\n導演級轉場劇本: ${directorScript}\n\n首幀分析:\n${startDesc}\n\n尾幀分析:\n${endDesc}\n\n技術要求: 生成一個${videoDuration}秒的影片。重點：影片的最後一幀畫面，必須完全符合『結尾場景』`;
-
-            } else {
-                 finalPrompt = `${veoPrompt}, a ${videoDuration} second video`;
-                 if (startFrame) {
-                    const { file } = startFrame;
-                    compositeImage = { imageBytes: await fileToBase64(file), mimeType: file.type };
-                 }
-            }
-
-            const videoResultUrl = await generateVeoVideo(finalPrompt, compositeImage, setVideoGenerationStatus);
-
-            setVideoGenerationStatus("正在生成影片縮圖...");
-            const thumbnailUrl = await generateVideoThumbnail(`${videoResultUrl}&key=${process.env.API_KEY}`);
-            
-            const newHistoryItem: VeoHistoryItem = {
-                ...currentParams,
-                id: `veo-${Date.now()}`,
-                videoUrl: videoResultUrl,
-                thumbnailUrl,
-                timestamp: Date.now(),
-            };
-            
-            setVeoHistory(prev => [newHistoryItem, ...prev]);
-            setGeneratedVideoUrl(videoResultUrl);
-            setLastSuccessfulVeoParams(currentParams);
-            addToast("影片生成成功！", "success");
-
-        } catch (err) {
-            console.error("Veo generation failed:", err);
-            const message = err instanceof Error ? err.message : "發生未知錯誤";
-            addToast(`影片生成失敗: ${message}`, 'error');
-        } finally {
-            setIsGeneratingVideo(false);
-            setVideoGenerationStatus('');
-        }
-    }, [veoPrompt, startFrame, endFrame, veoAspectRatio, videoDuration, addToast]);
-
-    const handleVeoImageUpdate = useCallback(async (start: UploadedImage | null, end: UploadedImage | null) => {
-        if (!start || !end) return; // Only trigger for dual frames
-        
-        setIsOptimizing(true); // Reuse optimizing state for loading indicator
-        addToast("AI導演分析中，即將自動生成提示...", "info");
-        try {
-            const startPart = await fileToGenerativePart(start.file);
-            const startDesc = await describeImageForVeo(startPart);
-            const endPart = await fileToGenerativePart(end.file);
-            const endDesc = await describeImageForVeo(endPart);
-            const directorScript = await createDirectorScript("", startDesc, endDesc);
-            setVeoPrompt(directorScript);
-        } catch (err) {
-            console.error("Auto-prompt generation failed:", err);
-            addToast("自動生成提示失敗", "error");
-        } finally {
-            setIsOptimizing(false);
-        }
-    }, [addToast]);
-
-    useEffect(() => {
-        handleVeoImageUpdate(startFrame, endFrame);
-    }, [startFrame, endFrame, handleVeoImageUpdate]);
-
-
-    // --- Effects ---
-    useEffect(() => {
-        // Set modifier key
-        modifierKey.current = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl';
-
-        // Check for mobile
-        const checkMobile = () => {
-            const isNowMobile = window.innerWidth < 768;
-            setIsMobile(isNowMobile);
-            if (!isNowMobile) {
-                setIsControlPanelOpen(true);
-            } else {
-                 setIsControlPanelOpen(false);
-            }
-        };
-        checkMobile();
-        window.addEventListener('resize', checkMobile);
-        return () => window.removeEventListener('resize', checkMobile);
-    }, []);
-
-    // Effect for keyboard shortcuts
+     // --- Keyboard Shortcuts ---
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            const modifier = modifierKey.current === '⌘' ? e.metaKey : e.ctrlKey;
-            if (modifier) {
-                switch (e.key) {
-                    case 'Enter':
-                        e.preventDefault();
-                        if (appMode === 'GENERATE' || appMode === 'CHARACTER_CREATOR') handleCurrentStateGenerate();
-                        else if (appMode === 'REMOVE_BG') handleRemoveBackground();
-                        else if (appMode === 'DRAW') handleUseDrawing();
-                        else if (appMode === 'VEO') handleGenerateVeo();
-                        break;
-                    case 'o':
-                    case 'O':
-                         e.preventDefault();
-                         handleOptimizePrompt();
-                         break;
-                    case 'i':
-                    case 'I':
-                        e.preventDefault();
-                        handleInspirePrompt();
-                        break;
-                    case 'Backspace':
-                        e.preventDefault();
-                        handleClearSettings();
-                        break;
-                }
-            }
-            if (e.key === '[' && appMode === 'DRAW') {
-                e.preventDefault();
-                setBrushSize(s => Math.max(1, s - 1));
-                setIsPreviewingBrushSize(true);
-            }
-            if (e.key === ']' && appMode === 'DRAW') {
-                e.preventDefault();
-                setBrushSize(s => Math.min(100, s + 1));
-                setIsPreviewingBrushSize(true);
-            }
-        };
+             const key = e.key.toLowerCase();
+             const isMod = e.ctrlKey || e.metaKey;
 
-        const handleKeyUp = (e: KeyboardEvent) => {
-             if (['[', ']'].includes(e.key)) {
-                setIsPreviewingBrushSize(false);
-            }
-        }
+             if (isMod && key === 'enter') {
+                 e.preventDefault();
+                 if (appMode === 'GENERATE' || appMode === 'CHARACTER_CREATOR') handleGenerate();
+                 else if (appMode === 'REMOVE_BG') handleRemoveBackground();
+                 else if (appMode === 'DRAW') handleUseDrawing();
+             }
+             if (isMod && key === 'o') { e.preventDefault(); handleOptimizePrompt(); }
+             if (isMod && key === 'i') { e.preventDefault(); onInspirePrompt(); }
+             if (isMod && key === 'backspace') { e.preventDefault(); onClearSettings(); }
+             
+             if (appMode === 'DRAW') {
+                if (isMod && key === 'z') { e.preventDefault(); drawCanvasRef.current?.undo(); }
+                if (key === '[') setBrushSize(s => Math.max(1, s-1));
+                if (key === ']') setBrushSize(s => Math.min(100, s+1));
+             }
+        };
 
         window.addEventListener('keydown', handleKeyDown);
-        window.addEventListener('keyup', handleKeyUp);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-            window.removeEventListener('keyup', handleKeyUp);
-        };
-    }, [appMode, handleCurrentStateGenerate, handleRemoveBackground, handleUseDrawing, handleOptimizePrompt, handleInspirePrompt, handleClearSettings, handleGenerateVeo]);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [appMode, handleGenerate, handleRemoveBackground, handleUseDrawing, handleOptimizePrompt, onInspirePrompt, onClearSettings]);
     
-    // Effect for clipboard paste
+    // --- Paste from clipboard ---
     useEffect(() => {
-        const handlePaste = (event: ClipboardEvent) => {
-            const items = event.clipboardData?.items;
+        const handlePaste = (e: ClipboardEvent) => {
+            const items = e.clipboardData?.items;
             if (!items) return;
+
             for (let i = 0; i < items.length; i++) {
-                if (items[i].type.indexOf("image") !== -1) {
+                if (items[i].type.indexOf('image') !== -1) {
                     const file = items[i].getAsFile();
                     if (file) {
                         const reader = new FileReader();
-                        reader.onload = (e) => {
-                            const src = e.target?.result as string;
-                            const newImage = { src, file };
+                        reader.onload = (event) => {
+                            const src = event.target?.result as string;
+                            const uploaded: UploadedImage = { src, file };
                             if (appMode === 'REMOVE_BG') {
-                                setUploadedImage(newImage);
-                            } else if (appMode === 'DRAW') {
-                                setDrawBackgroundImage(src);
-                            } else {
-                                setReferenceImages(prev => [...prev, newImage].slice(0, 8));
+                                setUploadedImage(uploaded);
+                            } else if (appMode === 'GENERATE' || appMode === 'CHARACTER_CREATOR') {
+                                setReferenceImages(prev => [...prev, uploaded].slice(0, 8));
+                            } else if (appMode === 'VEO') {
+                                if (!startFrame) {
+                                    handleStartFrameChange(uploaded);
+                                } else if (!endFrame) {
+                                    handleEndFrameChange(uploaded);
+                                }
                             }
-                            addToast('已從剪貼簿貼上圖片', 'success');
+                            addToast('圖片已從剪貼簿貼上', 'success');
                         };
                         reader.readAsDataURL(file);
                     }
+                    e.preventDefault();
+                    return;
                 }
             }
         };
-
         window.addEventListener('paste', handlePaste);
         return () => window.removeEventListener('paste', handlePaste);
-    }, [appMode, addToast]);
-
+    }, [appMode, addToast, startFrame, endFrame]);
+    
+    // --- Render Logic ---
 
     const renderMainPanel = () => {
         switch (appMode) {
-            case 'GENERATE':
-            case 'CHARACTER_CREATOR':
-            case 'REMOVE_BG':
-                return (
-                    <ResultPanel
-                        images={generatedImages}
-                        isLoading={isLoading}
-                        error={error}
-                        onPromptSelect={(p) => { setPrompt(p); handleGenerate(p, [], selectedAspectRatio); }}
-                        onUpscale={handleUpscale}
-                        onZoomOut={handleZoomOut}
-                        onSetLightboxConfig={(images, startIndex) => setLightboxConfig({ images, startIndex })}
-                        onUseImage={handleUseImage}
-                    />
-                );
-            case 'DRAW':
-                return (
-                    <div className="flex-1 flex items-center justify-center p-4 bg-black">
-                         <DrawingCanvas
-                            ref={drawCanvasRef}
-                            tool={drawTool}
-                            brushSize={brushSize}
-                            fillColor={fillColor}
-                            strokeColor={strokeColor}
-                            backgroundColor={canvasBackgroundColor}
-                            aspectRatio={drawAspectRatio}
-                            backgroundImage={drawBackgroundImage}
-                            isPreviewingBrushSize={isPreviewingBrushSize}
-                        />
-                    </div>
-                );
             case 'HISTORY':
-                return (
-                    <HistoryPanel
-                        history={history}
-                        selectedItem={selectedHistoryItem}
-                        onSelectItem={handleSelectItemForAnalysis}
-                        isAnalyzing={isAnalyzing}
-                        analysisError={analysisError}
-                        onUseHistoryItem={(item) => handleUseImage(item, 'reference')}
-                        onDeleteHistoryItem={(id) => {
-                             setHistory(prev => prev.filter(item => item.id !== id));
-                             if (selectedHistoryItem?.id === id) setSelectedHistoryItem(null);
-                             addToast('紀錄已刪除', 'success');
-                        }}
-                        onClearHistory={() => {
-                            if(window.confirm('確定要清除所有歷史紀錄嗎？此操作無法復原。')) {
-                                setHistory([]);
-                                setSelectedHistoryItem(null);
-                                addToast('歷史紀錄已清除', 'success');
-                            }
-                        }}
-                        onSetLightboxConfig={(images, startIndex) => setLightboxConfig({ images, startIndex })}
-                        addToast={addToast}
-                        onUseImage={(src, mode) => {
-                            const file = dataURLtoFile(src, 'from-history.png');
-                            if (mode === 'REMOVE_BG') {
-                                setUploadedImage({src, file});
-                                setAppMode('REMOVE_BG');
-                            } else if (mode === 'DRAW') {
-                                setDrawBackgroundImage(src);
-                                setAppMode('DRAW');
-                            }
-                        }}
-                        onUpscale={handleUpscale}
-                        onZoomOut={(src) => {
-                            const item = history.find(h => h.src === src);
-                            if (item) handleZoomOut(item);
-                        }}
-                    />
-                );
+                return <HistoryPanel
+                    history={history}
+                    selectedItem={selectedHistoryItem}
+                    onSelectItem={handleHistorySelect}
+                    isAnalyzing={isAnalyzing}
+                    analysisError={analysisError}
+                    onUseHistoryItem={(item) => onUseImage(item, 'reference')}
+                    onDeleteHistoryItem={(id) => {
+                        setHistory(h => h.filter(item => item.id !== id));
+                        if(selectedHistoryItem?.id === id) setSelectedHistoryItem(null);
+                    }}
+                    onClearHistory={() => setHistory([])}
+                    onSetLightboxConfig={(images, startIndex) => setLightboxConfig({ images, startIndex })}
+                    addToast={addToast}
+                    onUseImage={onUseHistoryImage}
+                    onUpscale={onUpscale}
+                    onZoomOut={(src) => {
+                        const item = history.find(h => h.src === src);
+                        if (item) onZoomOut(item);
+                    }}
+                />;
+            case 'DRAW':
+                return <main className="flex-1 flex flex-col p-2 md:p-4 bg-black min-w-0"><DrawingCanvas 
+                    ref={drawCanvasRef}
+                    tool={drawTool}
+                    brushSize={brushSize}
+                    fillColor={fillColor}
+                    strokeColor={strokeColor}
+                    backgroundColor={canvasBackgroundColor}
+                    aspectRatio={drawAspectRatio}
+                    backgroundImage={drawBackgroundImage}
+                    isPreviewingBrushSize={isPreviewingBrushSize}
+                /></main>
             case 'VEO':
-                return (
-                    <VeoPanel
-                        isLoading={isGeneratingVideo}
-                        loadingMessage={videoGenerationStatus}
-                        videoUrl={generatedVideoUrl}
-                        history={veoHistory}
-                        onDeleteHistory={(id) => setVeoHistory(prev => prev.filter(item => item.id !== id))}
-                        onRestoreSettings={(params) => {
-                            setVeoPrompt(params.prompt);
-                            setStartFrame(params.startFrame);
-                            setEndFrame(params.endFrame);
-                            setVeoAspectRatio(params.aspectRatio);
-                            setVideoDuration(params.duration);
-                            addToast('設定已還原', 'success');
-                        }}
-                    />
-                );
+                return <VeoPanel 
+                    history={veoHistory}
+                    onDelete={handleVeoDelete}
+                    isLoading={isGeneratingVideo}
+                    currentVideo={currentVeoVideo}
+                    onPlay={setCurrentVeoVideo}
+                    onRegenerate={handleVeoRegenerate}
+                    onUseText={handleVeoUseText}
+                    onRestore={handleVeoRestore}
+                />;
             default:
-                return null;
+                return <ResultPanel
+                    images={images}
+                    isLoading={isLoading}
+                    error={error}
+                    onPromptSelect={handlePromptSelect}
+                    onUpscale={onUpscale}
+                    onZoomOut={onZoomOut}
+                    onSetLightboxConfig={(images, startIndex) => setLightboxConfig({ images, startIndex })}
+                    onUseImage={onUseImage}
+                />;
         }
+    };
+    
+    const controlPanelProps = {
+        appMode, setAppMode, onGenerate: handleGenerate, onRemoveBackground: handleRemoveBackground,
+        isLoading, uploadedImage, setUploadedImage, referenceImages, setReferenceImages,
+        onRemoveReferenceImage: (index: number) => setReferenceImages(imgs => imgs.filter((_, i) => i !== index)),
+        prompt, setPrompt, selectedAspectRatio, onAspectRatioSelect: setSelectedAspectRatio, isOptimizing,
+        onOptimizePrompt: handleOptimizePrompt, onInspirePrompt, onClearSettings, addGreenScreen, setAddGreenScreen,
+        drawTool, setDrawTool, brushSize, onBrushSizeChange: setBrushSize, fillColor, setFillColor, strokeColor, setStrokeColor,
+        drawAspectRatio, setDrawAspectRatio, canvasBackgroundColor, setCanvasBackgroundColor,
+        onClearCanvas: () => drawCanvasRef.current?.clear(),
+        onUndoCanvas: () => drawCanvasRef.current?.undo(),
+        onUseDrawing: handleUseDrawing,
+        onDrawBackgroundUpload: (file: File) => {
+            const reader = new FileReader();
+            reader.onload = (e) => setDrawBackgroundImage(e.target?.result as string);
+            // FIX: Corrected typo from readDataAsURL to readAsDataURL
+            reader.readAsDataURL(file);
+        },
+        isControlPanelOpen, setIsControlPanelOpen, isMobile, modifierKey,
+        // VEO Props
+        veoPrompt, setVeoPrompt, startFrame, onStartFrameChange: handleStartFrameChange, endFrame, onEndFrameChange: handleEndFrameChange,
+        veoAspectRatio, setVeoAspectRatio, videoDuration, setVideoDuration, onGenerateVeo: handleGenerateVeo, isGeneratingVideo, isAnalyzingFrames
     };
 
     return (
-        <div className="flex h-screen bg-black text-white font-sans overflow-hidden">
-            <ControlPanel
-                appMode={appMode}
-                setAppMode={setAppMode}
-                onGenerate={handleCurrentStateGenerate}
-                onRemoveBackground={handleRemoveBackground}
-                isLoading={isLoading}
-                uploadedImage={uploadedImage}
-                setUploadedImage={setUploadedImage}
-                referenceImages={referenceImages}
-                setReferenceImages={setReferenceImages}
-                onRemoveReferenceImage={(index) => setReferenceImages(prev => prev.filter((_, i) => i !== index))}
-                prompt={prompt}
-                setPrompt={setPrompt}
-                selectedAspectRatio={selectedAspectRatio}
-                onAspectRatioSelect={setSelectedAspectRatio}
-                isOptimizing={isOptimizing}
-                onOptimizePrompt={handleOptimizePrompt}
-                onInspirePrompt={handleInspirePrompt}
-                onClearSettings={handleClearSettings}
-                addGreenScreen={addGreenScreen}
-                setAddGreenScreen={setAddGreenScreen}
-                drawTool={drawTool}
-                setDrawTool={setDrawTool}
-                brushSize={brushSize}
-                onBrushSizeChange={setBrushSize}
-                fillColor={fillColor}
-                setFillColor={setFillColor}
-                strokeColor={strokeColor}
-                setStrokeColor={setStrokeColor}
-                drawAspectRatio={drawAspectRatio}
-                setDrawAspectRatio={setDrawAspectRatio}
-                canvasBackgroundColor={canvasBackgroundColor}
-                setCanvasBackgroundColor={setCanvasBackgroundColor}
-                onClearCanvas={() => drawCanvasRef.current?.clear()}
-                onUndoCanvas={() => drawCanvasRef.current?.undo()}
-                onUseDrawing={handleUseDrawing}
-                onDrawBackgroundUpload={(file) => {
-                     const reader = new FileReader();
-                     reader.onload = (e) => setDrawBackgroundImage(e.target?.result as string);
-                     reader.readAsDataURL(file);
-                }}
-                isControlPanelOpen={isControlPanelOpen}
-                setIsControlPanelOpen={setIsControlPanelOpen}
-                isMobile={isMobile}
-                modifierKey={modifierKey.current}
-                // VEO Props
-                veoPrompt={veoPrompt}
-                setVeoPrompt={setVeoPrompt}
-                startFrame={startFrame}
-                setStartFrame={setStartFrame}
-                endFrame={endFrame}
-                setEndFrame={setEndFrame}
-                veoAspectRatio={veoAspectRatio}
-                setVeoAspectRatio={setVeoAspectRatio}
-                videoDuration={videoDuration}
-                setVideoDuration={setVideoDuration}
-                onGenerateVeo={handleGenerateVeo}
-                isGeneratingVideo={isGeneratingVideo}
-            />
-            
-            <div className="flex-1 flex flex-col min-w-0 relative">
-                {isMobile && !isControlPanelOpen && (
-                    <button onClick={() => setIsControlPanelOpen(true)} className="absolute top-4 left-4 z-30 p-2 bg-gray-900/80 rounded-full">
-                        <MenuIcon className="w-6 h-6"/>
+        <div className="h-screen bg-gray-900 text-white flex font-sans overflow-hidden">
+            <ControlPanel {...controlPanelProps} />
+            <div className="flex-1 flex flex-col relative min-w-0">
+                {!isControlPanelOpen && (
+                    <button onClick={() => setIsControlPanelOpen(true)} className="md:hidden fixed top-4 left-4 z-50 p-2 bg-gray-800/80 rounded-md">
+                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
                     </button>
                 )}
                 {renderMainPanel()}
@@ -751,19 +649,25 @@ function App() {
                 <Lightbox
                     config={lightboxConfig}
                     onClose={() => setLightboxConfig(null)}
-                    onUpscale={handleUpscale}
-                    onZoomOut={handleZoomOut}
-                    onUseImage={handleUseImage}
+                    onUpscale={onUpscale}
+                    onZoomOut={onZoomOut}
+                    onUseImage={onUseImage}
                 />
             )}
             
-             <div className="absolute bottom-4 right-4 z-50 flex flex-col items-end gap-2">
+            {/* Toast Container */}
+            <div className="fixed top-4 right-4 z-[100] space-y-2">
                 {toasts.map(toast => (
-                    <ToastNotification key={toast.id} toast={toast} onDismiss={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} />
+                    <div key={toast.id} className={`px-4 py-2 rounded-md text-sm font-semibold shadow-lg animate-fade-in-out ${
+                        toast.type === 'success' ? 'bg-green-600' :
+                        toast.type === 'error' ? 'bg-red-600' : 'bg-blue-600'
+                    }`}>
+                        {toast.message}
+                    </div>
                 ))}
             </div>
         </div>
     );
-}
+};
 
 export default App;

@@ -56,15 +56,16 @@ type ControlPanelProps = {
     veoPrompt: string;
     setVeoPrompt: React.Dispatch<React.SetStateAction<string>>;
     startFrame: UploadedImage | null;
-    setStartFrame: (image: UploadedImage | null) => void;
+    onStartFrameChange: (image: UploadedImage | null) => void;
     endFrame: UploadedImage | null;
-    setEndFrame: (image: UploadedImage | null) => void;
+    onEndFrameChange: (image: UploadedImage | null) => void;
     veoAspectRatio: VeoAspectRatio;
     setVeoAspectRatio: (ratio: VeoAspectRatio) => void;
     videoDuration: number;
     setVideoDuration: (duration: number) => void;
     onGenerateVeo: () => void;
     isGeneratingVideo: boolean;
+    isAnalyzingFrames: boolean;
 };
 
 const NavButton: React.FC<{
@@ -210,7 +211,8 @@ const ImageUploader: React.FC<{
     className?: string;
     showButtons?: boolean;
     multiple?: boolean;
-}> = ({ onImageUpload, children, className, showButtons = false, multiple = false }) => {
+    disabled?: boolean;
+}> = ({ onImageUpload, children, className, showButtons = false, multiple = false, disabled = false }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isWebcamOpen, setIsWebcamOpen] = useState(false);
 
@@ -236,6 +238,12 @@ const ImageUploader: React.FC<{
     const handlePasteFromClipboard = () => {
        alert("貼上功能已啟用！請直接在頁面上按 Ctrl+V (或 Cmd+V) 來貼上圖片。");
     };
+    
+    const handleClick = () => {
+        if (!disabled && fileInputRef.current) {
+            fileInputRef.current.click();
+        }
+    };
 
     return (
         <>
@@ -246,19 +254,20 @@ const ImageUploader: React.FC<{
                 className="hidden"
                 accept="image/png, image/jpeg, image/webp"
                 multiple={multiple}
+                disabled={disabled}
             />
-            <div className={className} onClick={() => fileInputRef.current?.click()}>
+            <div className={className} onClick={handleClick}>
                 {children}
             </div>
             {showButtons && (
                 <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
-                     <button onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md hover:bg-slate-700">
+                     <button onClick={handleClick} disabled={disabled} className="flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md hover:bg-slate-700 disabled:opacity-50">
                         <ImportIcon className="w-4 h-4"/> 從檔案上傳
                     </button>
-                    <button onClick={() => setIsWebcamOpen(true)} className="flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md hover:bg-slate-700">
+                    <button onClick={() => !disabled && setIsWebcamOpen(true)} disabled={disabled} className="flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md hover:bg-slate-700 disabled:opacity-50">
                         <CameraIcon className="w-4 h-4"/> 攝像頭
                     </button>
-                    <button onClick={handlePasteFromClipboard} className="col-span-2 flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md hover:bg-slate-700">
+                    <button onClick={handlePasteFromClipboard} disabled={disabled} className="col-span-2 flex items-center justify-center gap-2 p-2 bg-slate-800 rounded-md hover:bg-slate-700 disabled:opacity-50">
                         <ClipboardIcon className="w-4 h-4"/> 從剪貼簿貼上
                     </button>
                 </div>
@@ -272,11 +281,11 @@ const VersionInfo: React.FC<{ modifierKey: 'Ctrl' | '⌘' }> = ({ modifierKey })
     <div className="flex flex-col h-full text-slate-400 p-4 overflow-y-auto">
         <div className="flex-1 flex flex-col items-center justify-center text-center">
             <img 
-                src="data:image/png;base64,在此處貼上您的Base64編碼" 
+                src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" 
                 alt="鳥巢AI包娜娜 Logo" 
                 className="w-24 h-24 mb-4" 
             />
-            <h3 className="text-xl font-semibold text-cyan-400">鳥巢AI包娜娜 v0.2.7</h3>
+            <h3 className="text-xl font-semibold text-cyan-400">鳥巢AI包娜娜 v0.3.0</h3>
             <p className="text-lg mt-2 mb-4">主要功能介紹：</p>
             <ul className="text-sm text-left space-y-2 list-disc list-inside bg-black/20 p-4 rounded-lg">
                 <li>賽博龐克風格介面與快捷鍵支援</li>
@@ -617,17 +626,19 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
             label: string;
             image: UploadedImage | null;
             setImage: (image: UploadedImage | null) => void;
-        }> = ({ label, image, setImage }) => (
+            disabled?: boolean;
+        }> = ({ label, image, setImage, disabled }) => (
             <div>
                  <label className="text-xs text-slate-400 block mb-1">{label}</label>
-                 <ImageUploader onImageUpload={(img) => setImage(img)}>
+                 <ImageUploader onImageUpload={(img) => setImage(img)} disabled={disabled}>
                     {image ? (
-                        <div className="relative group aspect-video cursor-pointer rounded-md overflow-hidden">
+                        <div className={`relative group aspect-video rounded-md overflow-hidden ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                             <img src={image.src} alt={label} className="w-full h-full object-cover" />
                              <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <p className="text-sm">點擊更換</p>
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); setImage(null); }}
+                                    onClick={(e) => { e.stopPropagation(); if(!disabled) setImage(null); }}
+                                    disabled={disabled}
                                     className="absolute top-1 right-1 p-0.5 bg-black/60 rounded-full text-white"
                                 >
                                      <XIcon className="w-3 h-3"/>
@@ -635,7 +646,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                              </div>
                         </div>
                     ) : (
-                        <div className="flex flex-col items-center justify-center w-full h-full aspect-video bg-black/30 rounded-lg border-2 border-dashed border-fuchsia-500/20 cursor-pointer hover:border-fuchsia-500">
+                        <div className={`flex flex-col items-center justify-center w-full h-full aspect-video bg-black/30 rounded-lg border-2 border-dashed border-fuchsia-500/20 ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-fuchsia-500'}`}>
                              <PlusIcon className="w-6 h-6 text-slate-500" />
                              <p className="text-xs text-slate-500 mt-1">點擊上傳</p>
                          </div>
@@ -647,17 +658,25 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
         return (
             <>
                 <Section title="提示詞">
-                    <textarea
-                        value={props.veoPrompt}
-                        onChange={(e) => props.setVeoPrompt(e.target.value)}
-                        placeholder="一位太空人，在一個廢棄的太空艙裡，凝視著窗外的星空..."
-                        className="w-full h-24 p-2 bg-gray-800/50 rounded-lg text-sm placeholder-slate-500 focus:ring-2 focus:ring-fuchsia-500 focus:outline-none resize-y"
-                    />
+                    <div className="relative">
+                        <textarea
+                            value={props.veoPrompt}
+                            onChange={(e) => props.setVeoPrompt(e.target.value)}
+                            placeholder="一位太空人，在一個廢棄的太空艙裡，凝視著窗外的星空..."
+                            className="w-full h-24 p-2 bg-gray-800/50 rounded-lg text-sm placeholder-slate-500 focus:ring-2 focus:ring-fuchsia-500 focus:outline-none resize-y"
+                            disabled={props.isAnalyzingFrames}
+                        />
+                        {props.isAnalyzingFrames && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
+                                <div className="w-6 h-6 border-2 border-dashed rounded-full animate-spin border-fuchsia-400"></div>
+                            </div>
+                        )}
+                    </div>
                     <div className="flex gap-2 mt-2">
-                        <button onClick={props.onOptimizePrompt} disabled={props.isOptimizing} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs bg-purple-900/50 rounded-md hover:bg-fuchsia-700 disabled:opacity-50">
+                        <button onClick={props.onOptimizePrompt} disabled={props.isOptimizing || props.isAnalyzingFrames} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs bg-purple-900/50 rounded-md hover:bg-fuchsia-700 disabled:opacity-50">
                             <WandIcon className="w-4 h-4" /> {props.isOptimizing ? '處理中...' : '優化提示'}
                         </button>
-                        <button onClick={props.onInspirePrompt} disabled={props.isOptimizing} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs bg-purple-900/50 rounded-md hover:bg-fuchsia-700 disabled:opacity-50">
+                        <button onClick={props.onInspirePrompt} disabled={props.isOptimizing || props.isAnalyzingFrames} className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs bg-purple-900/50 rounded-md hover:bg-fuchsia-700 disabled:opacity-50">
                             <LightbulbIcon className="w-4 h-4" /> 提示靈感
                         </button>
                     </div>
@@ -685,8 +704,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                 
                 <Section title="AI 導演">
                     <div className="grid grid-cols-2 gap-3">
-                        <FrameUploader label="首幀 (可選)" image={props.startFrame} setImage={props.setStartFrame} />
-                        <FrameUploader label="尾幀 (可選)" image={props.endFrame} setImage={props.setEndFrame} />
+                        <FrameUploader label="首幀 (可選)" image={props.startFrame} setImage={props.onStartFrameChange} disabled={props.isAnalyzingFrames} />
+                        <FrameUploader label="尾幀 (可選)" image={props.endFrame} setImage={props.onEndFrameChange} disabled={props.isAnalyzingFrames} />
                     </div>
                 </Section>
                 
@@ -711,8 +730,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
                     </div>
                 </Section>
 
-                <button onClick={props.onGenerateVeo} disabled={props.isGeneratingVideo} className="w-full py-3 mt-auto bg-gradient-to-r from-cyan-500 to-fuchsia-600 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                     {props.isGeneratingVideo ? '生成中...' : '生成影片'}
+                <button onClick={() => props.onGenerateVeo()} disabled={props.isGeneratingVideo || props.isAnalyzingFrames} className="w-full py-3 mt-auto bg-gradient-to-r from-cyan-500 to-fuchsia-600 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                     {props.isGeneratingVideo ? '生成中...' : (props.isAnalyzingFrames ? '分析中...' : '生成影片')}
                 </button>
             </>
         );
@@ -738,7 +757,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = (props) => {
             </button>
             <div className="p-4 border-b border-fuchsia-500/20">
               <div className="flex justify-between items-center mb-4">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-transparent bg-clip-text">鳥巢AI包娜娜 v0.2.7 Cyberpunk</h1>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-fuchsia-500 to-cyan-400 text-transparent bg-clip-text">鳥巢AI包娜娜 v0.3.0 Cyberpunk</h1>
               </div>
               <nav className="grid grid-cols-3 gap-1 bg-black/50 p-1 rounded-lg">
                   <NavButton icon={MagicIcon} label="AI生成" title={!isMobile ? `AI生成 (${modifierKey}+Alt+1)` : 'AI生成'} isActive={appMode === 'GENERATE'} onClick={() => setAppMode('GENERATE')} />

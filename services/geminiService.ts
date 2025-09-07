@@ -1,110 +1,88 @@
 
+import { GoogleGenAI, Modality, Part, Type } from "@google/genai";
+import type { AspectRatio, GeneratedImage, UploadedImage, VeoAspectRatio, VeoHistoryItem, VeoParams, Toast } from "../types";
+import { fileToBase64, generateVideoThumbnail, createCompositeImage, dataURLtoFile } from "../utils";
 
-import { GoogleGenAI, Part, Modality, Type } from "@google/genai";
-import { fileToBase64 } from '../utils';
-import { SUBJECTS, BACKGROUNDS, ACTIONS_POSES, EMOTIONS, CLOTHING, DETAILS_OBJECTS, ART_STYLES, LIGHTING, COMPOSITIONS, TONES_TEXTURES, API_SUPPORTED_ASPECT_RATIOS } from '../constants';
-import type { AspectRatio } from "../types";
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+const GENERAL_MODEL = 'gemini-2.5-flash';
+const IMAGE_GEN_MODEL = 'imagen-4.0-generate-001';
+const IMAGE_EDIT_MODEL = 'gemini-2.5-flash-image-preview';
+const VIDEO_GEN_MODEL = 'veo-2.0-generate-001';
 
 
-// Initialize the Google Gemini AI client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
-
-/**
- * Converts a File object to a Gemini GenerativePart object.
- * @param file The file to convert.
- * @returns A promise that resolves to a GenerativePart object.
- */
-export async function fileToGenerativePart(file: File): Promise<Part> {
-    const base64EncodedData = await fileToBase64(file);
-    return {
-        inlineData: {
-            data: base64EncodedData,
-            mimeType: file.type,
-        },
-    };
-}
-
-/**
- * Generates images using the Gemini API.
- * @param prompt The text prompt for image generation.
- * @param imageParts An array of reference image parts.
- * @param selectedAspectRatio The desired aspect ratio for the generated images.
- * @returns A promise that resolves to an array of base64 encoded image strings.
- */
-export const generateImagesWithGemini = async (
+export const generateImages = async (
     prompt: string,
-    imageParts: Part[],
-    selectedAspectRatio: AspectRatio
-): Promise<string[]> => {
+    aspectRatio: AspectRatio,
+    referenceImages: UploadedImage[]
+): Promise<GeneratedImage[]> => {
     
-    // The Imagen API has a limited set of supported aspect ratios.
-    // We find the closest supported ratio if the selected one isn't directly supported.
-    const aspectRatio = API_SUPPORTED_ASPECT_RATIOS.includes(selectedAspectRatio) ? selectedAspectRatio : "1:1";
+    if (referenceImages.length > 0) {
+        const parts: Part[] = [];
+        for (const img of referenceImages) {
+            parts.push({
+                inlineData: {
+                    data: await fileToBase64(img.file),
+                    mimeType: img.file.type,
+                },
+            });
+        }
+        parts.push({ text: `Based on the provided images, create a new image with this prompt, maintaining a ${aspectRatio} aspect ratio: ${prompt}` });
 
-    const contents = imageParts.length > 0
-        ? { parts: [...imageParts, { text: prompt }] }
-        : prompt;
-
-    // Use generateContent for multimodal prompts (text + image)
-    if (imageParts.length > 0) {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash', // Use the image editing model for multimodal input
-            contents: contents,
+            model: IMAGE_EDIT_MODEL,
+            contents: { parts },
             config: {
                 responseModalities: [Modality.IMAGE, Modality.TEXT],
-            }
+            },
         });
 
-        const imagePartsFromResponse = response.candidates?.[0]?.content?.parts.filter(part => part.inlineData);
-        if (imagePartsFromResponse && imagePartsFromResponse.length > 0) {
-            return imagePartsFromResponse.map(part => part.inlineData!.data);
+        const generated: GeneratedImage[] = [];
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                 generated.push({
+                    id: crypto.randomUUID(),
+                    src: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
+                    alt: prompt,
+                    prompt: prompt,
+                });
+            }
         }
-        throw new Error("Image generation with reference failed to produce an image.");
+        if (generated.length === 0) throw new Error("The model did not return an image.");
+        return generated;
 
     } else {
-        // Use generateImages for text-only prompts
         const response = await ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
+            model: IMAGE_GEN_MODEL,
             prompt: prompt,
             config: {
-                // FIX: Changed numberOfImages to 1 to align with documentation examples.
-                numberOfImages: 1, // Let's generate 1 image at a time
+                numberOfImages: 4,
                 outputMimeType: 'image/png',
-                aspectRatio: aspectRatio as "1:1" | "3:4" | "4:3" | "9:16" | "16:9",
+                aspectRatio: aspectRatio as any,
             },
         });
     
-        if (response.generatedImages && response.generatedImages.length > 0) {
-            return response.generatedImages.map(img => img.image.imageBytes);
-        }
+        return response.generatedImages.map(img => ({
+            id: crypto.randomUUID(),
+            src: `data:image/png;base64,${img.image.imageBytes}`,
+            alt: prompt,
+            prompt: prompt,
+        }));
     }
-    
-    throw new Error("Image generation failed to produce any images.");
 };
 
-
-/**
- * Removes the background from an image using Gemini.
- * @param base64 The base64 encoded image data.
- * @param mimeType The MIME type of the image.
- * @param addGreenScreen Whether to add a green screen background.
- * @returns A promise that resolves to an object containing the new image base64 and any text response.
- */
-export const removeBackground = async (
-    base64: string,
-    mimeType: string,
-    addGreenScreen: boolean
-): Promise<{ image: string | null; text: string | null }> => {
-    const promptText = addGreenScreen
-        ? "Remove the background of this image and replace it with a solid green screen (#00FF00). Keep the subject perfectly intact."
-        : "Remove the background of this image, making it transparent. Keep the subject perfectly intact.";
+export const removeBackground = async (file: File, addGreenScreen: boolean): Promise<string> => {
+    const base64Data = await fileToBase64(file);
+    const mimeType = file.type;
+    
+    const prompt = `Remove the background, leaving only the main subject. The new background should be ${addGreenScreen ? 'a solid green screen color (#00b140)' : 'transparent'}.`;
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
+        model: IMAGE_EDIT_MODEL,
         contents: {
             parts: [
-                { inlineData: { data: base64, mimeType } },
-                { text: promptText },
+                { inlineData: { data: base64Data, mimeType } },
+                { text: prompt },
             ],
         },
         config: {
@@ -112,83 +90,40 @@ export const removeBackground = async (
         },
     });
 
-    const candidate = response.candidates?.[0];
-    if (!candidate) {
-        throw new Error("Background removal failed: No response from model.");
+    for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+            return part.inlineData.data;
+        }
     }
-    
-    const imagePart = candidate.content.parts.find(p => p.inlineData);
-    const textPart = candidate.content.parts.find(p => p.text);
-
-    return {
-        image: imagePart?.inlineData?.data || null,
-        text: textPart?.text || null,
-    };
+    throw new Error('No image was returned from the background removal service.');
 };
 
-/**
- * Optimizes a user's prompt using Gemini.
- * @param prompt The prompt to optimize.
- * @returns A promise that resolves to the optimized prompt string.
- */
-export const optimizePromptWithGemini = async (prompt: string): Promise<string> => {
+export const optimizePrompt = async (prompt: string): Promise<string> => {
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `You are an expert prompt engineer for text-to-image models.
-        Rewrite the following user prompt to be more descriptive, vivid, and effective for generating a high-quality, detailed image.
-        Focus on adding details about subject, style, lighting, and composition.
-        Return ONLY the rewritten prompt, without any explanation or preamble.
-        
-        User prompt: "${prompt}"
-        
-        Optimized prompt:`,
+        model: GENERAL_MODEL,
+        contents: `Optimize this image generation prompt to be more vivid, detailed, and effective for a text-to-image AI. Return only the optimized prompt, without any introductory text. Original prompt: "${prompt}"`,
     });
-
     return response.text.trim();
 };
 
-/**
- * Upscales an image using Gemini.
- * @param base64 The base64 encoded image data.
- * @param mimeType The MIME type of the image.
- * @returns A promise that resolves to the base64 encoded upscaled image string.
- */
-export const upscaleImageWithGemini = async (base64: string, mimeType: string): Promise<string> => {
+export const inspirePrompt = async (): Promise<string> => {
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
-        contents: {
-            parts: [
-                { inlineData: { data: base64, mimeType } },
-                { text: "Upscale this image to a higher resolution, enhancing details and clarity without changing the content. Make it sharper and more defined." },
-            ],
-        },
-        config: {
-            // FIX: Must include both Modality.IMAGE and Modality.TEXT for gemini-2.5-flash-image-preview
-            responseModalities: [Modality.IMAGE, Modality.TEXT],
-        },
+        model: GENERAL_MODEL,
+        contents: 'Create a random, creative, and visually interesting prompt for an AI image generator. The prompt should be a single sentence or a short paragraph. Do not use markdown or quotes.',
     });
-
-    const imagePart = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-
-    if (imagePart?.inlineData?.data) {
-        return imagePart.inlineData.data;
-    }
-
-    throw new Error("Upscaling failed to produce an image.");
+    return response.text.trim();
 };
 
-/**
- * Analyzes the aesthetics of an image using Gemini.
- * @param imagePart The image part to analyze.
- * @returns A promise that resolves to an object with a score and detailed analysis.
- */
-export const analyzeImageAesthetics = async (imagePart: Part): Promise<{ score: string; analysis: string }> => {
+export const analyzeImage = async (file: File): Promise<{ score: string; analysis: string }> => {
+    const base64Data = await fileToBase64(file);
+    const mimeType = file.type;
+
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: GENERAL_MODEL,
         contents: {
             parts: [
-                imagePart,
-                { text: "You are an art critic. Analyze this image for its aesthetic qualities. Provide a score out of 100 and a brief analysis covering composition, lighting, color, and subject matter. Return the response as a JSON object with two keys: 'score' (string, e.g., '85/100') and 'analysis' (string)." },
+                { inlineData: { data: base64Data, mimeType } },
+                { text: 'Analyze the aesthetics of this image. Provide a score out of 100 and a brief, constructive analysis of its composition, lighting, color, and subject matter.' },
             ]
         },
         config: {
@@ -196,189 +131,166 @@ export const analyzeImageAesthetics = async (imagePart: Part): Promise<{ score: 
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    score: { type: Type.STRING, description: "A score out of 100, e.g. '85/100'" },
-                    analysis: { type: Type.STRING, description: "A brief analysis of the image's aesthetics." },
-                },
-                required: ["score", "analysis"],
+                    score: { type: Type.STRING },
+                    analysis: { type: Type.STRING }
+                }
             }
-        },
+        }
     });
 
-    const jsonString = response.text.trim();
     try {
-        const result = JSON.parse(jsonString);
-        if (result.score && result.analysis) {
-            return result;
-        }
-        throw new Error("Invalid JSON format from analysis API.");
+        const json = JSON.parse(response.text.trim());
+        return { score: json.score, analysis: json.analysis };
     } catch (e) {
-        console.error("Failed to parse analysis JSON:", jsonString, e);
-        throw new Error("Failed to analyze image aesthetics.");
+        console.error("Failed to parse analysis JSON:", e, "Raw response:", response.text);
+        throw new Error("Failed to get a valid analysis from the AI.");
     }
 };
 
-/**
- * Gets an inspiration prompt snippet.
- * @returns A promise that resolves to a string with an inspiration snippet.
- */
-export const getInspiration = async (): Promise<string> => {
-    const getRandom = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
-    const inspiration = [
-        getRandom(SUBJECTS),
-        getRandom(BACKGROUNDS),
-        getRandom(ACTIONS_POSES),
-        getRandom(EMOTIONS),
-        getRandom(ART_STYLES),
-        getRandom(LIGHTING),
-    ].join(', ');
-    return inspiration;
-};
-
-
-/**
- * Enhances a webcam image using Gemini.
- * @param base64 The base64 encoded image data from the webcam.
- * @param mimeType The MIME type of the image.
- * @returns A promise that resolves to the base64 encoded enhanced image string.
- */
-export const enhanceWebcamImage = async (base64: string, mimeType: string): Promise<string> => {
+export const enhanceWebcamImage = async (base64Data: string, mimeType: string): Promise<string> => {
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image-preview',
+        model: IMAGE_EDIT_MODEL,
         contents: {
             parts: [
-                { inlineData: { data: base64, mimeType } },
-                { text: "This is a raw webcam photo. Please enhance it to look like a professionally shot portrait. Adjust lighting, color balance, and sharpness. Fix any minor blemishes. Do not change the person's features or the background." },
+                { inlineData: { data: base64Data, mimeType } },
+                { text: 'Enhance this webcam photo to improve lighting, clarity, and overall quality, making it look more professional.' },
             ],
         },
-        config: {
-            // FIX: Must include both Modality.IMAGE and Modality.TEXT for gemini-2.5-flash-image-preview
-            responseModalities: [Modality.IMAGE, Modality.TEXT],
-        },
+        config: { responseModalities: [Modality.IMAGE, Modality.TEXT] },
     });
 
-    const imagePart = response.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-
-    if (imagePart?.inlineData?.data) {
-        return imagePart.inlineData.data;
+    for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) return part.inlineData.data;
     }
+    throw new Error('Image enhancement failed to return an image.');
+};
 
-    throw new Error("Webcam image enhancement failed.");
+export const upscaleImage = async (file: File): Promise<string> => {
+    const base64Data = await fileToBase64(file);
+    const response = await ai.models.generateContent({
+        model: IMAGE_EDIT_MODEL,
+        contents: {
+            parts: [
+                { inlineData: { data: base64Data, mimeType: file.type } },
+                { text: 'Upscale this image, increasing its resolution and enhancing details without altering the content. Make it sharper and clearer.' },
+            ],
+        },
+        config: { responseModalities: [Modality.IMAGE, Modality.TEXT] },
+    });
+    for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) return part.inlineData.data;
+    }
+    throw new Error('Upscaling failed to return an image.');
+};
+
+export const zoomOutImage = async (file: File): Promise<string> => {
+    const base64Data = await fileToBase64(file);
+    const response = await ai.models.generateContent({
+        model: IMAGE_EDIT_MODEL,
+        contents: {
+            parts: [
+                { inlineData: { data: base64Data, mimeType: file.type } },
+                { text: 'Zoom out from this image by 2x, intelligently filling in the new surrounding areas to create a wider scene. Maintain the original style and content.' },
+            ],
+        },
+        config: { responseModalities: [Modality.IMAGE, Modality.TEXT] },
+    });
+    for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) return part.inlineData.data;
+    }
+    throw new Error('Zoom out failed to return an image.');
 };
 
 // --- VEO Services ---
 
-/**
- * Describes an image for Veo using a director's perspective.
- * @param imagePart The image part to describe.
- * @returns A promise that resolves to a descriptive string.
- */
-export const describeImageForVeo = async (imagePart: Part): Promise<string> => {
+export const describeImageForVideo = async (file: File): Promise<string> => {
+    const base64Data = await fileToBase64(file);
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: { parts: [imagePart] },
-        config: {
-            systemInstruction: `You are a film director analyzing a potential shot for a generative video AI. Describe the provided image using professional cinematography terms.
-            Strictly follow this 12-point structure in your output:
-            1.  主體 (Subject):
-            2.  場景 (Setting):
-            3.  動作/姿態 (Action/Pose):
-            4.  情緒/氛圍 (Mood/Atmosphere):
-            5.  構圖 (Composition):
-            6.  鏡頭 (Shot Type):
-            7.  角度 (Angle):
-            8.  光線 (Lighting):
-            9.  色彩 (Color Palette):
-            10. 焦點 (Focal Point):
-            11. 鏡頭運動建議 (Suggested Camera Movement):
-            12. 潛在動態 (Potential Dynamics):
-            
-            Output ONLY the structured description.`,
-        },
+        model: GENERAL_MODEL,
+        contents: {
+            parts: [
+                { inlineData: { data: base64Data, mimeType: file.type } },
+                { text: `扮演一位專業的電影導演，為 Veo 2 AI 影片模型分析這張圖片。嚴格按照以下12個維度輸出專業級提示詞，主動加入「角色動作運動」和「鏡頭運動」，把這張靜態圖片變成一個動態的開場腳本：[主體描述]，在[場景背景]中，[動作與姿態]，[表情情緒]，穿著[服飾與配件]，周圍環繞著[環境細節與物件]，使用[藝術風格]，[光影效果]，[構圖與視角]，整體呈現[色調與質感]、[角色動作運動]、[鏡頭運動]。不要包含長寬比資訊。` }
+            ]
+        }
     });
     return response.text.trim();
 };
 
-/**
- * Creates a director's script for transitioning between two scenes.
- * @param userPrompt The user's core idea.
- * @param startDesc The description of the starting scene.
- * @param endDesc The description of the ending scene.
- * @returns A promise that resolves to a transition script.
- */
-export const createDirectorScript = async (userPrompt: string, startDesc: string, endDesc: string): Promise<string> => {
+export const createDirectorScript = async (startFile: File, endFile: File): Promise<string> => {
+    const startBase64 = await fileToBase64(startFile);
+    const endBase64 = await fileToBase64(endFile);
+    
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        config: {
-            systemInstruction: `You are a creative film director scripting a single, continuous shot for the Veo 2 video model. Your task is to conceptualize a seamless and logical transformation from a 'Start Scene' to an 'End Scene'.
-
-            **Primary Rule: The very last frame of the video MUST perfectly match the 'End Scene' description.** This is non-negotiable.
-
-            Your output should be a concise, imaginative paragraph describing the camera movement, character/subject actions, and the visual metamorphosis. Focus on "how" the transition happens.
-
-            User's Core Idea: ${userPrompt}
-            Start Scene Description:
-            ${startDesc}
-            End Scene Description:
-            ${endDesc}
-
-            Director's Transition Script:`,
-        },
-        contents: '', // Contents can be empty when using system instructions like this
+        model: GENERAL_MODEL,
+        contents: {
+            parts: [
+                { text: "你是專為 Veo 2 設計的電影導演。你的任務是根據「開頭場景」和「結尾場景」這兩張參考圖，構思一個從開頭自然蛻變到結尾的連續鏡頭故事。你的首要規則是：影片的最後一幀畫面，必須完全變成『結尾場景』的樣子。在這個前提下，再去構思如何從『開頭場景』自然地演變過去。請輸出一段專業的導演級腳本描述這個過程，包含鏡頭運動和角色動態。" },
+                { text: "開頭場景：" },
+                { inlineData: { data: startBase64, mimeType: startFile.type } },
+                { text: "結尾場景：" },
+                { inlineData: { data: endBase64, mimeType: endFile.type } }
+            ]
+        }
     });
     return response.text.trim();
 };
 
-/**
- * Generates a video using the Veo model and polls for completion.
- * @param prompt The final, detailed prompt for the video.
- * @param image An optional composite image for visual reference.
- * @param onStatusUpdate A callback to report progress.
- * @returns A promise that resolves to the video's download URL.
- */
-export const generateVeoVideo = async (
-    prompt: string,
-    image: { imageBytes: string; mimeType: string } | undefined,
-    onStatusUpdate: (status: string) => void
-): Promise<string> => {
-    onStatusUpdate("正在提交影片生成任務...");
+export const generateVeoVideo = async (params: VeoParams, addToast: (message: string, type?: Toast['type']) => void): Promise<VeoHistoryItem> => {
+    addToast('開始生成影片，這可能需要幾分鐘...', 'info');
+    
+    let compositeImage: UploadedImage | undefined = undefined;
+    if (params.startFrame && params.endFrame) {
+        addToast('AI導演合併圖像中...', 'info');
+        const { dataUrl } = await createCompositeImage(params.startFrame.src, params.endFrame.src);
+        compositeImage = {
+            src: dataUrl,
+            file: dataURLtoFile(dataUrl, 'composite.png')
+        };
+    }
+
+    const finalPrompt = `${params.prompt}\n\n重點：影片的最後一幀畫面，必須完全符合『結尾場景』。`;
+
+    const imageForApi = compositeImage || params.startFrame;
+
     let operation = await ai.models.generateVideos({
-        model: 'veo-2.0-generate-001',
-        prompt,
-        image,
+        model: VIDEO_GEN_MODEL,
+        prompt: finalPrompt,
+        image: imageForApi ? {
+            imageBytes: await fileToBase64(imageForApi.file),
+            mimeType: imageForApi.file.type,
+        } : undefined,
         config: {
-            numberOfVideos: 1
+            numberOfVideos: 1,
+            aspectRatio: params.aspectRatio,
         }
     });
+    
+    addToast('影片請求已提交，正在處理中...', 'info');
 
-    onStatusUpdate("任務已提交，等待生成中... (可能需要數分鐘)");
-
-    let pollCount = 0;
-    const reassuringMessages = [
-        "正在渲染第一幀...", "AI正在構思鏡頭運動...", "色彩校正中...", "處理音訊軌道(如果有的話)...", "正在進行最後的編碼...", "就快好了！"
-    ];
     while (!operation.done) {
-        pollCount++;
-        const waitTime = Math.min(30000, 10000 + pollCount * 2000); // Poll every 12, 14, 16... seconds, max 30s
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        
-        const messageIndex = (pollCount - 1) % reassuringMessages.length;
-        onStatusUpdate(`生成中... ${reassuringMessages[messageIndex]} (第 ${pollCount} 次檢查)`);
-        
-        try {
-            operation = await ai.operations.getVideosOperation({ operation: operation });
-        } catch (e) {
-            console.error("Polling failed, but will retry:", e);
-            onStatusUpdate("檢查進度時發生錯誤，將重試...");
-        }
+        await new Promise(resolve => setTimeout(resolve, 10000)); // Poll every 10 seconds
+        operation = await ai.operations.getVideosOperation({ operation: operation });
+        // FIX: The progressPercentage can be of type 'unknown' from the SDK. Cast it to a number before use.
+        const progress = Number((operation.metadata as any)?.progressPercentage) || 0;
+        addToast(`影片生成進度: ${Math.round(progress)}%`, 'info');
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
     if (!downloadLink) {
-        // Attempt to extract error from operation if available
-        const errorDetails = (operation as any).error ? JSON.stringify((operation as any).error) : "未知錯誤";
-        throw new Error(`影片生成完成，但未找到下載連結。詳細資訊: ${errorDetails}`);
+        throw new Error("Video generation completed, but no download link was provided.");
     }
+    
+    addToast('影片生成完畢，正在獲取縮圖...', 'success');
+    
+    const videoUrlWithKey = `${downloadLink}&key=${process.env.API_KEY}`;
+    const thumbnailUrl = await generateVideoThumbnail(videoUrlWithKey);
 
-    onStatusUpdate("影片生成完畢！");
-    return downloadLink;
+    return {
+        ...params,
+        id: crypto.randomUUID(),
+        videoUrl: videoUrlWithKey,
+        thumbnailUrl,
+        timestamp: Date.now(),
+    };
 };

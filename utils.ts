@@ -205,41 +205,73 @@ export const createCompositeImage = (startImgSrc: string, endImgSrc: string): Pr
 };
 
 /**
- * Generates a thumbnail from a video URL.
+ * Generates a thumbnail from a video URL by fetching it as a blob to avoid CORS issues.
  * @param videoUrl The URL of the video (requires API key).
  * @returns A promise that resolves to a base64 data URL of the thumbnail.
  */
 export const generateVideoThumbnail = (videoUrl: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
         const video = document.createElement('video');
-        video.crossOrigin = 'anonymous';
-        video.src = videoUrl;
         video.muted = true;
+        video.preload = 'metadata'; // We only need metadata and the first frame
 
-        video.onloadeddata = () => {
-            video.currentTime = 0; // Seek to the beginning
-        };
-
-        video.onseeked = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return reject('Could not get canvas context');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg')); // JPEG is smaller for thumbnails
-            video.remove(); // Clean up
-        };
-
-        video.onerror = (e) => {
-            reject(`Failed to load video for thumbnail generation: ${e}`);
+        let objectUrl: string | null = null;
+        
+        const cleanup = () => {
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+            }
             video.remove();
         };
+        
+        try {
+            // Step 1: Fetch the video data as a blob
+            const response = await fetch(videoUrl);
+            if (!response.ok) {
+                let errorBody = 'No details available.';
+                try { errorBody = await response.text(); } catch {}
+                throw new Error(`Failed to fetch video: ${response.status} ${response.statusText}. Body: ${errorBody}`);
+            }
+            const videoBlob = await response.blob();
 
-        video.play().catch(e => {
-            // Autoplay might be blocked, but loadeddata should still fire.
-            // If not, we might need a user interaction to play the video.
-            // For this use case, seeking should be enough.
-        });
+            // Step 2: Create an object URL from the blob
+            objectUrl = URL.createObjectURL(videoBlob);
+            video.src = objectUrl;
+
+            video.onloadeddata = () => {
+                // Seeking to 0 can sometimes be unreliable. A small offset is often safer.
+                video.currentTime = 0.1;
+            };
+
+            video.onseeked = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    cleanup();
+                    return reject('Could not get canvas context');
+                }
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL('image/jpeg');
+                cleanup();
+                resolve(dataUrl);
+            };
+
+            // Fix: Type-safely handle the `onerror` event, which can receive a string or an Event.
+            video.onerror = (e) => {
+                cleanup();
+                const videoElement = (e instanceof Event) ? (e.target as HTMLVideoElement) : null;
+                const errorMessage = videoElement?.error?.message || (typeof e === 'string' ? e : 'Unknown video error');
+                reject(`Error loading video for thumbnail generation: ${errorMessage}`);
+            };
+
+            // Start loading the video data
+            video.load();
+
+        } catch (error) {
+            cleanup();
+            reject(error);
+        }
     });
 };

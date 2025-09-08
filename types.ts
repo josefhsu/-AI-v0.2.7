@@ -46,7 +46,7 @@ export type DrawingCanvasRef = {
 };
 
 // --- VEO Types ---
-export type VeoAspectRatio = '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
+export type VeoAspectRatio = '16:9' | '1:1' | '9:16';
 
 export type VeoParams = {
     prompt: string;

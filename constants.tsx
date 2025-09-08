@@ -7,7 +7,7 @@ export const ASPECT_RATIOS = ['11:6', '16:9', '3:2', '4:3', '1:1', '3:4', '2:3',
 export const API_SUPPORTED_ASPECT_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 
 // --- VEO Constants ---
-export const VEO_ASPECT_RATIOS: ReadonlyArray<"16:9" | "4:3" | "1:1" | "3:4" | "9:16"> = ['16:9', '4:3', '1:1', '3:4', '9:16'] as const;
+export const VEO_ASPECT_RATIOS: ReadonlyArray<"16:9" | "1:1" | "9:16"> = ['16:9', '1:1', '9:16'] as const;
 
 export const VEO_MEME_PROMPTS = [
     { label: '一切都很好', prompt: "『This is Fine』迷因裡的柴犬，戴著太陽眼鏡坐在燃燒的沙灘椅上，周圍是海嘯警報，牠啜飲著一杯小雨傘著火的飲料，輕聲說：『沒事的。』" },

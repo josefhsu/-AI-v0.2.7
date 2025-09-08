@@ -1,6 +1,6 @@
 import { GoogleGenAI, Modality, Part, Type } from "@google/genai";
 import type { AspectRatio, GeneratedImage, UploadedImage, VeoAspectRatio, VeoHistoryItem, VeoParams, Toast } from "../types";
-import { fileToBase64, generateVideoThumbnail, createCompositeImage, dataURLtoFile } from "../utils";
+import { fileToBase64, generateVideoThumbnail, dataURLtoFile } from "../utils";
 import { EDITING_EXAMPLES } from "../constants";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -285,19 +285,30 @@ export const createDirectorScript = async (startFile: File, endFile: File): Prom
 export const generateVeoVideo = async (params: VeoParams, addToast: (message: string, type?: Toast['type']) => void): Promise<VeoHistoryItem> => {
     addToast('開始生成影片，這可能需要幾分鐘...', 'info');
     
-    let compositeImage: UploadedImage | undefined = undefined;
-    if (params.startFrame && params.endFrame) {
-        addToast('AI導演合併圖像中...', 'info');
-        const { dataUrl } = await createCompositeImage(params.startFrame.src, params.endFrame.src);
-        compositeImage = {
-            src: dataUrl,
-            file: dataURLtoFile(dataUrl, 'composite.png')
-        };
+    // The composite image approach by stitching start and end frames might confuse the VEO model.
+    // A more reliable method is to provide only the start frame (if available) and use a detailed prompt
+    // to describe the transition to the end frame. The AI Director already generates such a prompt.
+    
+    let aspectRatioInstruction = '';
+    switch (params.aspectRatio) {
+        case '16:9':
+            aspectRatioInstruction = '影片長寬比必須為 16:9。';
+            break;
+        case '9:16':
+            aspectRatioInstruction = '影片長寬比必須為 9:16。';
+            break;
+        case '1:1':
+            aspectRatioInstruction = '影片長寬比必須為 1:1。';
+            break;
     }
 
-    const finalPrompt = `${params.prompt}${params.endFrame ? `\n\n重點：影片的最後一幀畫面，必須完全符合『結尾場景』。` : ''}`;
+    const endFrameInstruction = params.endFrame ? `\n\n重點：影片的最後一幀畫面，必須完全符合『結尾場景』。` : '';
+    
+    const finalPrompt = `${aspectRatioInstruction} ${params.prompt}${endFrameInstruction}`;
 
-    const imageForApi = compositeImage || params.startFrame;
+    // The VEO API accepts a single image. We prioritize the start frame,
+    // as the prompt is designed to guide the generation from that starting point.
+    const imageForApi = params.startFrame || params.endFrame;
 
     let operation = await ai.models.generateVideos({
         model: VIDEO_GEN_MODEL,
@@ -308,7 +319,6 @@ export const generateVeoVideo = async (params: VeoParams, addToast: (message: st
         } : undefined,
         config: {
             numberOfVideos: 1,
-            aspectRatio: params.aspectRatio as any,
         }
     });
     

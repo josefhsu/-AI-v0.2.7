@@ -14,17 +14,17 @@ export const MagicIcon: React.FC<IconProps> = (props) => (
     </IconWrapper>
 );
 
+// Fix: Replaced the backspace icon with a more intuitive eraser icon for "Remove Background" for better UX.
 export const EraseIcon: React.FC<IconProps> = (props) => (
     <IconWrapper {...props} viewBox="0 0 24 24" strokeWidth={1.5} fill="none" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m3 3l-3-3 3-3" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10 21.267 3.033 14.3a1.5 1.5 0 0 1 0-2.121l9.192-9.192a1.5 1.5 0 0 1 2.121 0l7.067 7.067a1.5 1.5 0 0 1 0 2.121l-9.192 9.192a1.5 1.5 0 0 1-2.121 0zM10 21.267 18.2 13.067" />
     </IconWrapper>
 );
 
-// FIX: The PaintBrushIcon was incorrectly displaying a cog icon. It has been replaced with a proper paintbrush icon.
+// Fix: Corrected the PaintBrushIcon to display a paintbrush instead of a cog icon.
 export const PaintBrushIcon: React.FC<IconProps> = (props) => (
     <IconWrapper {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m-1.125 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
     </IconWrapper>
 );
 
@@ -70,10 +70,10 @@ export const UndoIcon: React.FC<IconProps> = (props) => (
     </IconWrapper>
 );
 
-// FIX: The RectangleIcon was incorrectly displaying a circle with a shape inside. It has been replaced with a proper rectangle icon.
+// Fix: Corrected the RectangleIcon to display a rectangle instead of a circle.
 export const RectangleIcon: React.FC<IconProps> = (props) => (
     <IconWrapper {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5v13.5H3.75z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75h16.5v16.5H3.75z" />
     </IconWrapper>
 );
 

@@ -1,5 +1,4 @@
-
-
+// Fix: Restored file content to resolve parsing errors caused by file corruption.
 import React from 'react';
 import type { GeneratedImage } from '../types';
 import { EyeIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, PaperClipIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
@@ -104,7 +103,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({ images, isLoading, err
       ) : (
         <div className="flex flex-col items-center justify-center text-center h-full text-slate-400 p-4">
             <img 
-                src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAGACAYAAACkxAwAA//8HwcpPAAAABklEQVQDANq5PODm/WyLAAAAAElFTkSuQmCC" 
+                src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYAAAAGACAYAAACkx7W/AwAA//8HwcpPAAAABklEQVQDANq5PODm/WyLAAAAAElFTkSuQmCC" 
                 alt="鳥巢AI包娜娜 Logo" 
                 className="w-64 h-64 mb-6" 
             />

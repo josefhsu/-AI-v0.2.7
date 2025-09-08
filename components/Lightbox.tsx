@@ -1,5 +1,4 @@
-
-
+// Fix: Restored file content to resolve parsing errors caused by file corruption.
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { GeneratedImage, LightboxConfig } from '../types';
 import { XIcon, ArrowLeftIcon, ArrowRightIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, PaperClipIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';

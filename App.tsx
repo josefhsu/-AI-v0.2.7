@@ -697,6 +697,7 @@ const App: React.FC = () => {
                     onRegenerate={handleVeoRegenerate}
                     onUseText={handleVeoUseText}
                     onRestore={handleVeoRestore}
+                    addToast={addToast}
                 />;
             default:
                 return <ResultPanel

@@ -275,3 +275,28 @@ export const generateVideoThumbnail = (videoUrl: string): Promise<string> => {
         }
     });
 };
+
+/**
+ * Asynchronously downloads a video from a remote URL.
+ * This is necessary to bypass CORS restrictions on direct downloads.
+ * @param url The URL of the video to download.
+ * @param filename The desired filename for the downloaded video.
+ */
+export const downloadVideoFromUrl = async (url: string, filename: string): Promise<void> => {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch video: ${response.status} ${response.statusText}`);
+    }
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up the blob URL after a short delay
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+};

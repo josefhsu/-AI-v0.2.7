@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import type { VeoHistoryItem } from '../types';
+import type { VeoHistoryItem, Toast } from '../types';
 import { DownloadIcon, TrashIcon, VideoCameraIcon, RegenerateIcon, TextIcon, RestoreIcon } from './Icon';
-import { downloadImage } from '../utils';
+import { downloadVideoFromUrl } from '../utils';
 
 type ActionButtonProps = {
     onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
@@ -35,7 +35,8 @@ const VeoHistory: React.FC<{
     onRegenerate: () => void;
     onUseText: () => void;
     onRestore: () => void;
-}> = ({ history, onDelete, onPlay, onRegenerate, onUseText, onRestore }) => {
+    onDownload: (item: VeoHistoryItem) => void;
+}> = ({ history, onDelete, onPlay, onRegenerate, onUseText, onRestore, onDownload }) => {
     return (
         <div className="pt-4 pr-2">
             <h3 className="text-lg font-semibold text-cyan-400 mb-3">歷史紀錄</h3>
@@ -49,7 +50,7 @@ const VeoHistory: React.FC<{
                             <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
                                 <p className="text-xs text-slate-200 max-h-16 overflow-hidden">{item.prompt}</p>
                                 <div className="grid grid-cols-3 gap-1.5">
-                                    <ActionButton onClick={(e) => { e.stopPropagation(); downloadImage(item.videoUrl, 'veo-video.mp4'); }} icon={DownloadIcon} label="下載" small />
+                                    <ActionButton onClick={(e) => { e.stopPropagation(); onDownload(item); }} icon={DownloadIcon} label="下載" small />
                                     <ActionButton onClick={(e) => { e.stopPropagation(); onRegenerate(); }} icon={RegenerateIcon} label="再生成" small />
                                     <ActionButton onClick={(e) => { e.stopPropagation(); onUseText(); }} icon={TextIcon} label="使用文字" small />
                                     <ActionButton onClick={(e) => { e.stopPropagation(); onRestore(); }} icon={RestoreIcon} label="還原設定" small />
@@ -81,14 +82,15 @@ type VeoPanelProps = {
     onRegenerate: () => void;
     onUseText: () => void;
     onRestore: () => void;
+    addToast: (message: string, type?: Toast['type']) => void;
 };
 
-export const VeoPanel: React.FC<VeoPanelProps> = ({ history, onDelete, isLoading, currentVideo, onPlay, onRegenerate, onUseText, onRestore }) => {
+export const VeoPanel: React.FC<VeoPanelProps> = ({ history, onDelete, isLoading, currentVideo, onPlay, onRegenerate, onUseText, onRestore, addToast }) => {
     const [effectiveVideo, setEffectiveVideo] = useState<VeoHistoryItem | null>(null);
+    const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
+    const [isFetchingVideo, setIsFetchingVideo] = useState(false);
 
     useEffect(() => {
-        // If there's a currentVideo prop, use it.
-        // Otherwise, if history is not empty and no video is selected, default to the latest one.
         if (currentVideo) {
             setEffectiveVideo(currentVideo);
         } else if (!currentVideo && history.length > 0) {
@@ -97,12 +99,63 @@ export const VeoPanel: React.FC<VeoPanelProps> = ({ history, onDelete, isLoading
             setEffectiveVideo(null);
         }
     }, [currentVideo, history]);
+    
+    useEffect(() => {
+        let objectUrlToRevoke: string | null = null;
+
+        const fetchAndSetVideoUrl = async () => {
+            if (!effectiveVideo) {
+                setVideoObjectUrl(null);
+                return;
+            }
+
+            setIsFetchingVideo(true);
+            setVideoObjectUrl(null);
+
+            try {
+                const response = await fetch(effectiveVideo.videoUrl);
+                if (!response.ok) {
+                    throw new Error(`影片載入失敗: ${response.status} ${response.statusText}`);
+                }
+                const videoBlob = await response.blob();
+                const objectUrl = URL.createObjectURL(videoBlob);
+                objectUrlToRevoke = objectUrl;
+                setVideoObjectUrl(objectUrl);
+            } catch (error) {
+                console.error('Failed to fetch video for playback:', error);
+                addToast(error instanceof Error ? error.message : '未知的影片載入錯誤', 'error');
+                setVideoObjectUrl(null);
+            } finally {
+                setIsFetchingVideo(false);
+            }
+        };
+
+        fetchAndSetVideoUrl();
+
+        return () => {
+            if (objectUrlToRevoke) {
+                URL.revokeObjectURL(objectUrlToRevoke);
+            }
+        };
+    }, [effectiveVideo, addToast]);
+    
+    const handleDownload = async (itemToDownload: VeoHistoryItem) => {
+        addToast('正在準備下載...', 'info');
+        try {
+            const filename = `veo-video-${itemToDownload.id.slice(0, 8)}.mp4`;
+            await downloadVideoFromUrl(itemToDownload.videoUrl, filename);
+            addToast('下載已開始！', 'success');
+        } catch (error) {
+            console.error('Download failed:', error);
+            addToast(`下載失敗: ${error instanceof Error ? error.message : '未知錯誤'}`, 'error');
+        }
+    };
 
     return (
         <main className="flex-1 flex flex-col md:flex-row h-full overflow-hidden bg-black min-w-0">
             {/* Main Content: Player */}
             <div className="flex-1 flex flex-col p-4">
-                <div className="flex-1 flex items-center justify-center bg-black rounded-lg relative overflow-hidden shadow-lg shadow-cyber-cyan/20">
+                <div className="flex-1 flex items-center justify-center bg-black rounded-lg relative overflow-hidden shadow-lg shadow-fuchsia-500/10">
                     {isLoading && (
                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20">
                             <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-fuchsia-500 mb-4"></div>
@@ -110,16 +163,22 @@ export const VeoPanel: React.FC<VeoPanelProps> = ({ history, onDelete, isLoading
                             <p className="text-sm text-slate-400 mt-2">這可能需要數分鐘時間</p>
                          </div>
                     )}
-                    {effectiveVideo ? (
-                        <video key={effectiveVideo.id} src={effectiveVideo.videoUrl} controls autoPlay loop className="w-full h-full object-contain" />
-                    ) : !isLoading && (
+                     {isFetchingVideo && !isLoading && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10">
+                            <div className="w-12 h-12 border-2 border-dashed rounded-full animate-spin border-cyan-400"></div>
+                            <p className="mt-3 text-slate-300">正在載入影片...</p>
+                        </div>
+                    )}
+                    {videoObjectUrl ? (
+                        <video key={effectiveVideo?.id} src={videoObjectUrl} controls autoPlay loop className="w-full h-full object-contain" />
+                    ) : !isLoading && !isFetchingVideo && (
                         <EmptyState />
                     )}
                 </div>
                 {effectiveVideo && !isLoading && (
                     <div className="flex-shrink-0 pt-4">
                         <div className="flex items-center gap-3">
-                            <ActionButton onClick={() => downloadImage(effectiveVideo.videoUrl, 'veo-video.mp4')} icon={DownloadIcon} label="下載" />
+                            <ActionButton onClick={() => handleDownload(effectiveVideo)} icon={DownloadIcon} label="下載" />
                             <ActionButton onClick={onRegenerate} icon={RegenerateIcon} label="再生成" />
                             <ActionButton onClick={onUseText} icon={TextIcon} label="使用文字" />
                             <ActionButton onClick={onRestore} icon={RestoreIcon} label="還原設定" />
@@ -137,6 +196,7 @@ export const VeoPanel: React.FC<VeoPanelProps> = ({ history, onDelete, isLoading
                     onRegenerate={onRegenerate}
                     onUseText={onUseText}
                     onRestore={onRestore}
+                    onDownload={handleDownload}
                 />
             </aside>
         </main>

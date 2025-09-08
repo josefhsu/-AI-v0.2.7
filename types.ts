@@ -8,6 +8,8 @@ export type UploadedImage = {
     src: string;
     file: File;
     isPlaceholder?: boolean;
+    width?: number;
+    height?: number;
 };
 
 export type GeneratedImage = {

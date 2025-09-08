@@ -126,7 +126,6 @@ export const FUNCTION_BUTTONS = [
     { label: '公仔手辦', prompt: '4K, create a 1/7 scale commercialized figure of the character, in a realistic style and environment. Place the figure on a computer desk, using a circular transparent acrylic base without any text. On the computer screen, display the ZBrush modeling process of the figure. Next to the computer screen, place a BANDAI-style toy packaging box printed with the original artwork' },
     { label: '三視圖', prompt: 'character design sheet, orthographic view, front view, side view, back view, T-pose, detailed, clean line art, white background' },
     { label: '3D紙雕', prompt: '3D sculpted paper art, layered paper, intricate papercraft, quilling, detailed, delicate lighting' },
-    { label: '比例參考圖', prompt: '將生成內容重新繪製到灰色參考圖上，如有空白加入符合內容的outpaint以適合灰色參考圖的寬高比，完全佔滿取代灰色參考圖的所有內容(包含底色背景)，僅保留灰色參考圖的寬高比' },
     { label: '移除文字', prompt: 'remove all text, subtitles, and logos from the image' },
     { label: '更換背景', prompt: 'change the background to [在此填寫背景], keep the subject' },
     { label: '線稿提取', prompt: 'extract the line art from this image, clean white background' },

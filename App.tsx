@@ -21,7 +21,7 @@ import type {
 } from './types';
 import * as geminiService from './services/geminiService';
 import { dataURLtoFile, getFileSizeFromBase64, getImageDimensions, createPlaceholderImage } from './utils';
-import { API_SUPPORTED_ASPECT_RATIOS, ASPECT_RATIOS, FUNCTION_BUTTONS } from './constants';
+import { API_SUPPORTED_ASPECT_RATIOS, ASPECT_RATIOS } from './constants';
 
 const App: React.FC = () => {
     // --- Core State ---
@@ -81,6 +81,14 @@ const App: React.FC = () => {
 
     // --- Lightbox State ---
     const [lightboxConfig, setLightboxConfig] = useState<LightboxConfig>(null);
+        
+    const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
+        const id = crypto.randomUUID();
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+            setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
+        }, 5000); // Increased duration for important messages
+    }, []);
 
     // --- Effects ---
 
@@ -107,19 +115,15 @@ const App: React.FC = () => {
     // Save history to localStorage when it changes
     useEffect(() => {
         try {
-            localStorage.setItem('image-gen-history', JSON.stringify(history));
+            const historyToSave = history.slice(0, 25); // Ensure we don't save more than the limit
+            localStorage.setItem('image-gen-history', JSON.stringify(historyToSave));
         } catch (e) {
             console.error("Failed to save history to localStorage", e);
+             if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22)) {
+                addToast('儲存空間已滿！請至歷史紀錄頁面手動清除部分紀錄。', 'error');
+            }
         }
-    }, [history]);
-
-    const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
-        const id = crypto.randomUUID();
-        setToasts(prev => [...prev, { id, message, type }]);
-        setTimeout(() => {
-            setToasts(currentToasts => currentToasts.filter(toast => toast.id !== id));
-        }, 5000); // Increased duration for important messages
-    }, []);
+    }, [history, addToast]);
 
     // AI Editing Advisor Effect
     useEffect(() => {
@@ -164,13 +168,13 @@ const App: React.FC = () => {
                  newHistoryItems.push({ ...image, analysis: null });
             }
         }
-        setHistory(prev => [...newHistoryItems, ...prev].slice(0, 50)); // Limit history size
+        setHistory(prev => [...newHistoryItems, ...prev].slice(0, 25)); // Limit history size
     }, []);
 
     // --- API Handlers ---
 
     const handleGenerate = useCallback(async () => {
-        if (!prompt.trim()) {
+        if (!prompt.trim() && !referenceImages.some(img => img.isPlaceholder)) {
             addToast("請輸入提示詞", "error");
             return;
         }
@@ -185,7 +189,12 @@ const App: React.FC = () => {
                 addToast(`長寬比 ${selectedAspectRatio} 不支援，將使用 1:1`, 'info');
                 aspectRatioToUse = '1:1';
             }
-            const result = await geminiService.generateImages(prompt, aspectRatioToUse, referenceImages);
+
+            const hasPlaceholder = referenceImages.some(img => img.isPlaceholder);
+            const defaultPrompt = "4k high-quality,將生成內容重新繪製到灰色參考圖上，如有空白加入符合內容的outpaint以適合灰色參考圖的寬高比，完全佔滿取代灰色參考圖的所有內容(包含底色背景)，僅保留灰色參考圖的寬高比";
+            const finalPrompt = hasPlaceholder ? `${defaultPrompt}, ${prompt}` : prompt;
+
+            const result = await geminiService.generateImages(finalPrompt, aspectRatioToUse, referenceImages);
             setImages(result);
             addToHistory(result);
         } catch (err) {
@@ -300,15 +309,15 @@ const App: React.FC = () => {
         }
     }, [addToast]);
 
-    const handleStartFrameChange = (image: UploadedImage | null) => {
+    const handleStartFrameChange = useCallback((image: UploadedImage | null) => {
         setStartFrame(image);
         handleVeoImageChange(image, endFrame);
-    };
+    }, [endFrame, handleVeoImageChange]);
 
-    const handleEndFrameChange = (image: UploadedImage | null) => {
+    const handleEndFrameChange = useCallback((image: UploadedImage | null) => {
         setEndFrame(image);
         handleVeoImageChange(startFrame, image);
-    };
+    }, [startFrame, handleVeoImageChange]);
 
     const handleVeoRegenerate = useCallback(() => {
         const paramsToRegen = currentVeoVideo || lastVeoSuccessParams;
@@ -358,9 +367,14 @@ const App: React.FC = () => {
         setVeoHistory(h => h.filter(item => item.id !== id));
     };
 
-    const handleSendImageToVeo = useCallback((src: string, frame: 'start' | 'end') => {
-        const file = dataURLtoFile(src, `veo-frame-${frame}.png`);
-        const uploadedImage: UploadedImage = { src, file };
+    const handleSendImageToVeo = useCallback(async (item: GeneratedImage, frame: 'start' | 'end') => {
+        const file = dataURLtoFile(item.src, `veo-frame-${frame}.png`);
+        const uploadedImage: UploadedImage = { 
+            src: item.src, 
+            file, 
+            width: item.width, 
+            height: item.height 
+        };
         
         if (frame === 'start') {
             handleStartFrameChange(uploadedImage);
@@ -371,7 +385,7 @@ const App: React.FC = () => {
         setAppMode('VEO');
         setLightboxConfig(null);
         addToast(`圖片已傳送至 ${frame === 'start' ? '首幀' : '尾幀'}`, 'success');
-    }, [addToast]);
+    }, [addToast, handleStartFrameChange, handleEndFrameChange]);
 
     // --- UI Handlers ---
 
@@ -379,32 +393,25 @@ const App: React.FC = () => {
         // Sync states
         setSelectedAspectRatio(ratio);
         setDrawAspectRatio(ratio);
-
-        // Define the outpainting prompt
-        const outpaintingPrompt = FUNCTION_BUTTONS.find(b => b.label === '比例參考圖')?.prompt;
-        if (!outpaintingPrompt) return;
-
-        // Create placeholder image
+    
+        // Create placeholder image with dimensions
+        const [w, h] = ratio.split(':').map(Number);
+        const placeholderWidth = w * 100;
+        const placeholderHeight = h * 100;
         const placeholderSrc = createPlaceholderImage(ratio, '#808080');
         const placeholderFile = dataURLtoFile(placeholderSrc, `placeholder-${ratio}.png`);
         const placeholderImage: UploadedImage = { 
             src: placeholderSrc, 
             file: placeholderFile, 
-            isPlaceholder: true 
+            isPlaceholder: true,
+            width: placeholderWidth,
+            height: placeholderHeight
         };
-
+    
         // Update reference images: remove old placeholders and add the new one to the front
         setReferenceImages(prev => {
             const otherImages = prev.filter(img => !img.isPlaceholder);
             return [placeholderImage, ...otherImages];
-        });
-
-        // Update prompt: add outpainting prompt only once
-        setPrompt(prev => {
-            if (!prev.includes(outpaintingPrompt)) {
-                return prev ? `${prev.trim()}, ${outpaintingPrompt}` : outpaintingPrompt;
-            }
-            return prev;
         });
     };
 
@@ -452,7 +459,7 @@ const App: React.FC = () => {
     
     const onUseImage = useCallback((image: GeneratedImage, action: 'reference' | 'remove_bg' | 'draw_bg') => {
         const file = dataURLtoFile(image.src, `used-${image.id}.png`);
-        const uploaded: UploadedImage = { src: image.src, file };
+        const uploaded: UploadedImage = { src: image.src, file, width: image.width, height: image.height };
 
         switch(action) {
             case 'reference':
@@ -473,15 +480,15 @@ const App: React.FC = () => {
         setLightboxConfig(null);
     }, [addToast]);
     
-    const onUseHistoryImage = useCallback((src: string, targetMode: AppMode) => {
-        const file = dataURLtoFile(src, `history-img.png`);
-        const uploaded: UploadedImage = { src, file };
+    const onUseHistoryImage = useCallback((item: HistoryItem, targetMode: AppMode) => {
+        const file = dataURLtoFile(item.src, `history-img.png`);
+        const uploaded: UploadedImage = { src: item.src, file, width: item.width, height: item.height };
 
         if (targetMode === 'REMOVE_BG') {
             setUploadedImage(uploaded);
             setAppMode('REMOVE_BG');
         } else if (targetMode === 'DRAW') {
-            setDrawBackgroundImage(src);
+            setDrawBackgroundImage(item.src);
             setAppMode('DRAW');
         }
     }, []);
@@ -553,7 +560,8 @@ const App: React.FC = () => {
         if (!drawCanvasRef.current) return;
         const dataUrl = drawCanvasRef.current.exportImage();
         const file = dataURLtoFile(dataUrl, 'drawing.png');
-        setReferenceImages([{ src: dataUrl, file }]);
+        const { width, height } = await getImageDimensions(dataUrl);
+        setReferenceImages([{ src: dataUrl, file, width, height }]);
         setAppMode('GENERATE');
         addToast("畫布已作為參考圖", "success");
     }, [addToast]);
@@ -622,13 +630,25 @@ const App: React.FC = () => {
                     const file = items[i].getAsFile();
                     if (file) {
                         const reader = new FileReader();
-                        reader.onload = (event) => {
+                        reader.onload = async (event) => {
                             const src = event.target?.result as string;
-                            const uploaded: UploadedImage = { src, file };
+                             const { width, height } = await getImageDimensions(src);
+                            const uploaded: UploadedImage = { src, file, width, height };
                             if (appMode === 'REMOVE_BG') {
                                 setUploadedImage(uploaded);
                             } else if (appMode === 'GENERATE' || appMode === 'CHARACTER_CREATOR') {
-                                setReferenceImages(prev => [...prev, uploaded].slice(0, 8));
+                                setReferenceImages(prev => {
+                                    const placeholder = prev.find(img => img.isPlaceholder);
+                                    const otherImages = prev.filter(img => !img.isPlaceholder);
+                            
+                                    if (placeholder) {
+                                        // If placeholder exists, put the new image after it.
+                                        return [placeholder, uploaded, ...otherImages].slice(0, 8);
+                                    } else {
+                                        // If no placeholder, put the new image at the very front.
+                                        return [uploaded, ...otherImages].slice(0, 8);
+                                    }
+                                });
                             } else if (appMode === 'VEO') {
                                 if (!startFrame) {
                                     handleStartFrameChange(uploaded);
@@ -647,7 +667,7 @@ const App: React.FC = () => {
         };
         window.addEventListener('paste', handlePaste);
         return () => window.removeEventListener('paste', handlePaste);
-    }, [appMode, addToast, startFrame, endFrame]);
+    }, [appMode, addToast, startFrame, endFrame, handleStartFrameChange, handleEndFrameChange]);
     
     // --- Render Logic ---
 
@@ -660,7 +680,6 @@ const App: React.FC = () => {
                     onSelectItem={handleHistorySelect}
                     isAnalyzing={isAnalyzing}
                     analysisError={analysisError}
-                    onUseHistoryItem={(item) => onUseImage(item, 'reference')}
                     onDeleteHistoryItem={(id) => {
                         setHistory(h => h.filter(item => item.id !== id));
                         if(selectedHistoryItem?.id === id) setSelectedHistoryItem(null);
@@ -670,10 +689,7 @@ const App: React.FC = () => {
                     addToast={addToast}
                     onUseImage={onUseHistoryImage}
                     onUpscale={onUpscale}
-                    onZoomOut={(src) => {
-                        const item = history.find(h => h.src === src);
-                        if (item) onZoomOut(item);
-                    }}
+                    onZoomOut={(item) => onZoomOut(item)}
                     onSendImageToVeo={handleSendImageToVeo}
                 />;
             case 'DRAW':

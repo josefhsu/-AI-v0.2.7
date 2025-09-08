@@ -10,7 +10,7 @@ interface LightboxProps {
   onUpscale: (src: string) => void;
   onZoomOut: (item: GeneratedImage) => void;
   onUseImage: (image: GeneratedImage, action: 'reference' | 'remove_bg' | 'draw_bg') => void;
-  onSendImageToVeo: (src: string, frame: 'start' | 'end') => void;
+  onSendImageToVeo: (image: GeneratedImage, frame: 'start' | 'end') => void;
 }
 
 export const Lightbox: React.FC<LightboxProps> = ({ config, onClose, onUpscale, onZoomOut, onUseImage, onSendImageToVeo }) => {
@@ -180,8 +180,8 @@ export const Lightbox: React.FC<LightboxProps> = ({ config, onClose, onUpscale, 
                     <button onClick={handleDownload} title="下載圖片" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <DownloadIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onUpscale(currentImage.src)} title="提升畫質" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <ExpandIcon className="w-5 h-5" /> </button>
                     <button onClick={() => onZoomOut(currentImage)} title="Zoom out 2x" className="p-2 text-white bg-slate-800/80 rounded-full hover:bg-fuchsia-600 transition-colors"> <ZoomOutIcon className="w-5 h-5" /> </button>
-                    <button onClick={() => onSendImageToVeo(currentImage.src, 'start')} title="用於首幀" className="p-2 text-white bg-cyan-800/80 rounded-full hover:bg-cyan-600 transition-colors"> <SendToStartFrameIcon className="w-5 h-5" /> </button>
-                    <button onClick={() => onSendImageToVeo(currentImage.src, 'end')} title="用於尾幀" className="p-2 text-white bg-cyan-800/80 rounded-full hover:bg-cyan-600 transition-colors"> <SendToEndFrameIcon className="w-5 h-5" /> </button>
+                    <button onClick={() => onSendImageToVeo(currentImage, 'start')} title="用於首幀" className="p-2 text-white bg-cyan-800/80 rounded-full hover:bg-cyan-600 transition-colors"> <SendToStartFrameIcon className="w-5 h-5" /> </button>
+                    <button onClick={() => onSendImageToVeo(currentImage, 'end')} title="用於尾幀" className="p-2 text-white bg-cyan-800/80 rounded-full hover:bg-cyan-600 transition-colors"> <SendToEndFrameIcon className="w-5 h-5" /> </button>
                     <span className="text-xs font-mono bg-black/30 px-2 py-1 rounded">{(zoom * 100).toFixed(0)}%</span>
                 </div>
             </div>

@@ -9,15 +9,14 @@ interface HistoryPanelProps {
   onSelectItem: (item: HistoryItem) => void;
   isAnalyzing: boolean;
   analysisError: string | null;
-  onUseHistoryItem: (item: HistoryItem) => void;
   onDeleteHistoryItem: (id: string) => void;
   onClearHistory: () => void;
   onSetLightboxConfig: (images: GeneratedImage[], startIndex: number) => void;
   addToast: (message: string, type?: Toast['type']) => void;
-  onUseImage: (src: string, targetMode: AppMode) => void;
+  onUseImage: (item: HistoryItem, targetMode: AppMode) => void;
   onUpscale: (src: string) => void;
-  onZoomOut: (src: string) => void;
-  onSendImageToVeo: (src: string, frame: 'start' | 'end') => void;
+  onZoomOut: (item: HistoryItem) => void;
+  onSendImageToVeo: (image: GeneratedImage, frame: 'start' | 'end') => void;
 }
 
 const HistoryGallery: React.FC<{
@@ -68,12 +67,12 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
   onSelectItem,
   isAnalyzing,
   analysisError,
-  onUseHistoryItem,
   onDeleteHistoryItem,
   onClearHistory,
   onSetLightboxConfig,
   addToast,
   onSendImageToVeo,
+  onZoomOut,
   ...analysisPanelProps
 }) => {
   return (
@@ -86,10 +85,10 @@ export const HistoryPanel: React.FC<HistoryPanelProps> = ({
                     image={selectedItem}
                     isAnalyzing={isAnalyzing}
                     analysisError={analysisError}
-                    onUseHistoryItem={onUseHistoryItem}
                     onDeleteHistoryItem={onDeleteHistoryItem}
                     addToast={addToast}
                     onSendImageToVeo={onSendImageToVeo}
+                    onZoomOut={() => onZoomOut(selectedItem)}
                     {...analysisPanelProps}
                  />
             ) : (

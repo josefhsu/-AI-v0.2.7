@@ -1,5 +1,5 @@
 import React from 'react';
-import type { HistoryItem, AppMode, Toast } from '../types';
+import type { HistoryItem, AppMode, Toast, GeneratedImage } from '../types';
 import { downloadImage, formatFileSize, getAspectRatio } from '../utils';
 import { TrashIcon, PaperClipIcon, DownloadIcon, ExpandIcon, ZoomOutIcon, EraseIcon, PaintBrushIcon, SendToStartFrameIcon, SendToEndFrameIcon } from './Icon';
 
@@ -7,13 +7,12 @@ interface AnalysisPanelProps {
   image: HistoryItem;
   isAnalyzing: boolean;
   analysisError: string | null;
-  onUseHistoryItem: (item: HistoryItem) => void;
   onDeleteHistoryItem: (id: string) => void;
   addToast: (message: string, type?: Toast['type']) => void;
-  onUseImage: (src: string, targetMode: AppMode) => void;
+  onUseImage: (item: HistoryItem, targetMode: AppMode) => void;
   onUpscale: (src: string) => void;
-  onZoomOut: (src: string) => void;
-  onSendImageToVeo: (src: string, frame: 'start' | 'end') => void;
+  onZoomOut: () => void;
+  onSendImageToVeo: (image: GeneratedImage, frame: 'start' | 'end') => void;
 }
 
 const ActionButton: React.FC<{ onClick: () => void; icon: React.FC<any>; label: string; disabled?: boolean }> = 
@@ -55,7 +54,6 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
     image,
     isAnalyzing,
     analysisError,
-    onUseHistoryItem,
     onDeleteHistoryItem,
     addToast,
     onUseImage,
@@ -90,14 +88,14 @@ export const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider">操作</h3>
             <div className="grid grid-cols-2 gap-2">
-                <ActionButton onClick={() => onUseHistoryItem(image)} icon={PaperClipIcon} label="作為參考圖" />
+                <ActionButton onClick={() => onUseImage(image, 'GENERATE')} icon={PaperClipIcon} label="作為參考圖" />
                 <ActionButton onClick={handleDownload} icon={DownloadIcon} label="下載圖片" />
-                <ActionButton onClick={() => onUseImage(image.src, 'REMOVE_BG')} icon={EraseIcon} label="移除背景" />
-                <ActionButton onClick={() => onUseImage(image.src, 'DRAW')} icon={PaintBrushIcon} label="設為畫布背景" />
+                <ActionButton onClick={() => onUseImage(image, 'REMOVE_BG')} icon={EraseIcon} label="移除背景" />
+                <ActionButton onClick={() => onUseImage(image, 'DRAW')} icon={PaintBrushIcon} label="設為畫布背景" />
                 <ActionButton onClick={() => onUpscale(image.src)} icon={ExpandIcon} label="提升畫質" />
-                <ActionButton onClick={() => onZoomOut(image.src)} icon={ZoomOutIcon} label="Zoom Out" />
-                <ActionButton onClick={() => onSendImageToVeo(image.src, 'start')} icon={SendToStartFrameIcon} label="用於首幀" />
-                <ActionButton onClick={() => onSendImageToVeo(image.src, 'end')} icon={SendToEndFrameIcon} label="用於尾幀" />
+                <ActionButton onClick={onZoomOut} icon={ZoomOutIcon} label="Zoom Out" />
+                <ActionButton onClick={() => onSendImageToVeo(image, 'start')} icon={SendToStartFrameIcon} label="用於首幀" />
+                <ActionButton onClick={() => onSendImageToVeo(image, 'end')} icon={SendToEndFrameIcon} label="用於尾幀" />
             </div>
             <div className="mt-2">
                 <ActionButton onClick={() => onDeleteHistoryItem(image.id)} icon={TrashIcon} label="刪除此紀錄" />
